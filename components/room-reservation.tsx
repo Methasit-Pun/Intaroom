@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation"
 import LogoutButton from "@/components/logout-button"
 import { MapPin } from "lucide-react"
 // Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient } from "@/lib/supabase-client"
+import { getSupabaseClient, isUserAuthenticated } from "@/lib/supabase-client"
 
 // Static room data to avoid database queries
 const staticRooms = [
@@ -84,24 +84,48 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [showRoomDetails, setShowRoomDetails] = useState(false)
-
-  // Initialize Supabase client
-  const supabase = getSupabaseClient()
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   // Check if user is logged in
   useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      setIsLoggedIn(!!data.session)
+    const checkAuth = async () => {
+      try {
+        setCheckingAuth(true)
+
+        // Check if user is logged in via localStorage (for admin)
+        if (localStorage.getItem("isAdmin") === "true") {
+          setIsLoggedIn(true)
+          setCheckingAuth(false)
+          return
+        }
+
+        // Check if user is logged in via Supabase
+        const authenticated = await isUserAuthenticated()
+        console.log("Authentication check result:", authenticated)
+
+        setIsLoggedIn(authenticated)
+
+        // If not logged in and not an admin, redirect to login
+        if (!authenticated && !localStorage.getItem("isAdmin")) {
+          console.log("User not authenticated, redirecting to login")
+          router.push("/login")
+        }
+      } catch (error) {
+        console.error("Error checking authentication:", error)
+      } finally {
+        setCheckingAuth(false)
+      }
     }
 
-    checkSession()
-  }, [supabase])
+    checkAuth()
+  }, [router])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
-    fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
-  }, [selectedDate, currentRoomIndex])
+    if (!checkingAuth && isLoggedIn) {
+      fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+    }
+  }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth])
 
   // Function to fetch reservations
   const fetchReservations = async (roomId: number, date: Date) => {
@@ -262,6 +286,35 @@ export default function RoomReservation() {
 
   const handleMyReservations = () => {
     router.push("/my-reservations")
+  }
+
+  // Show loading state while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <p>Checking authentication status...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not logged in, show login button
+  if (!isLoggedIn) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
+        <div className="flex flex-col items-center">
+          <h1 className="text-2xl font-semibold mb-6">
+            <span className="text-[#D4AF37]">INTA</span>ROOM
+          </h1>
+          <p className="mb-6">Please log in to access the room reservation system</p>
+          <Button className="bg-white text-[#5A0D16] hover:bg-gray-100" onClick={() => router.push("/login")}>
+            Login
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

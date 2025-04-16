@@ -4,12 +4,11 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2 } from "lucide-react"
+import { resetSupabaseClient } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -21,12 +20,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [userType, setUserType] = useState<"user" | "admin">("user")
   const [verificationSuccess, setVerificationSuccess] = useState(false)
-
-  // Initialize Supabase client with explicit URL and key
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const [checkingSession, setCheckingSession] = useState(true)
 
   // Check for verification success parameter
   useEffect(() => {
@@ -40,24 +34,37 @@ export default function LoginPage() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        setCheckingSession(true)
+
+        // Reset the Supabase client to ensure a fresh connection
+        const supabase = resetSupabaseClient()
+
         // Check if admin is already logged in via localStorage
         if (localStorage.getItem("isAdmin") === "true") {
+          console.log("Admin is already logged in, redirecting to /admin")
           router.push("/admin")
           return
         }
 
         // For regular users, check Supabase session
         const { data } = await supabase.auth.getSession()
+
         if (data.session) {
-          router.push("/")
+          console.log("User is already logged in, redirecting to /")
+          // Use window.location for a hard redirect
+          window.location.href = "/"
+        } else {
+          console.log("No active session found")
         }
       } catch (error) {
         console.error("Session check error:", error)
+      } finally {
+        setCheckingSession(false)
       }
     }
 
     checkSession()
-  }, [router, supabase])
+  }, [router])
 
   // Handle login with separate flows for admin and regular users
   const handleLogin = async (e: React.FormEvent) => {
@@ -84,13 +91,16 @@ export default function LoginPage() {
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
           // Redirect to admin page
-          router.push("/admin")
+          window.location.href = "/admin"
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
         // Regular user login - use Supabase authentication
         console.log("Attempting regular user login with username:", username)
+
+        // Get a fresh Supabase client
+        const supabase = resetSupabaseClient()
 
         // First, get the email associated with the username
         const { data: profileData, error: profileError } = await supabase
@@ -124,6 +134,9 @@ export default function LoginPage() {
 
           console.log("Login successful, redirecting to home page")
 
+          // Store a flag in localStorage to indicate successful login
+          localStorage.setItem("userLoggedIn", "true")
+
           // Force a hard navigation to break any potential redirect loops
           window.location.href = "/"
         }
@@ -134,6 +147,17 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white mb-4" />
+          <p className="text-white">Checking authentication status...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
