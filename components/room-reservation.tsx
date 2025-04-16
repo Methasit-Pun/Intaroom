@@ -112,12 +112,24 @@ export default function RoomReservation() {
       const dateStr = date.toISOString().split("T")[0]
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
+      // Get a fresh Supabase client
+      const supabase = getSupabaseClient()
+
+      // Check if we have a valid session before fetching
+      const { data: sessionData } = await supabase.auth.getSession()
+      console.log("Current session status:", {
+        hasSession: !!sessionData.session,
+        expiresAt: sessionData.session?.expires_at,
+      })
+
       // Direct query to reservations table only, avoiding profiles table
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from("reservations")
         .select("booking_name, room_id, date, start_time, end_time, status")
         .eq("room_id", roomId)
         .eq("date", dateStr)
+
+      console.log(`Fetch response status: ${status}`)
 
       if (error) {
         console.error("Error fetching reservations:", error)

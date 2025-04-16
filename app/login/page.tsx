@@ -65,11 +65,17 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
+    console.log("Login attempt started", { userType, username })
+
     try {
       if (userType === "admin") {
         // Admin login - completely bypass Supabase auth
+        console.log("Attempting admin login")
+
         // Check hardcoded admin credentials
         if (username === "admin1" && password === "admin123") {
+          console.log("Admin credentials valid, setting cookies and localStorage")
+
           // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
@@ -84,6 +90,8 @@ export default function LoginPage() {
         }
       } else {
         // Regular user login - use Supabase authentication
+        console.log("Attempting regular user login with username:", username)
+
         // First, get the email associated with the username
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
@@ -91,15 +99,20 @@ export default function LoginPage() {
           .eq("username", username)
           .single()
 
+        console.log("Profile lookup result:", { profileData, profileError })
+
         if (profileError || !profileData) {
           throw new Error("Username not found. Please check your username and try again.")
         }
 
         // Now sign in with the email and password
+        console.log("Found email, attempting sign in with:", profileData.email)
         const { data, error } = await supabase.auth.signInWithPassword({
           email: profileData.email,
           password,
         })
+
+        console.log("Sign in result:", { success: !!data.user, error })
 
         if (error) throw error
 
@@ -109,11 +122,13 @@ export default function LoginPage() {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
+          console.log("Login successful, redirecting to home")
           // Regular user
           router.push("/")
         }
       }
     } catch (error: any) {
+      console.error("Login error:", error)
       setError(error.message || "Failed to login")
     } finally {
       setLoading(false)
