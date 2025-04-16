@@ -135,3 +135,29 @@ export interface Database {
     }
   }
 }
+
+export type Tables<
+  PublicTableNameOrOptions extends
+    | keyof (Database["public"]["Tables"] & { _: never })
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName]
+  : PublicTableNameOrOptions extends keyof (Database["public"]["Tables"] & { _: never })
+    ? Database["public"]["Tables"][PublicTableNameOrOptions]
+    : never
+
+export type TableRow<
+  PublicTableNameOrOptions extends
+    | keyof (Database["public"]["Tables"] & { _: never })
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName]["Row"]
+  : PublicTableNameOrOptions extends keyof (Database["public"]["Tables"] & { _: never })
+    ? Database["public"]["Tables"][PublicTableNameOrOptions]["Row"]
+    : never

@@ -125,7 +125,7 @@ export default function LoginPage() {
           console.log("Login successful, redirecting to home page")
 
           // Force a hard navigation to break any potential redirect loops
-          window.location.href = "/home"
+          window.location.href = "/"
         }
       }
     } catch (error: any) {

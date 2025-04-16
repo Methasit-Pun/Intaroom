@@ -32,7 +32,8 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/forgot-password") ||
     req.nextUrl.pathname.startsWith("/auth") ||
     req.nextUrl.pathname.startsWith("/register-success") ||
-    req.nextUrl.pathname.startsWith("/reset-password")
+    req.nextUrl.pathname.startsWith("/reset-password") ||
+    req.nextUrl.pathname === "/home" // Add /home as an auth route to prevent redirect loops
 
   // If trying to access admin route without admin cookie or session, redirect to login
   if (isAdminRoute && !session && !adminCookie) {
@@ -56,8 +57,8 @@ export async function middleware(req: NextRequest) {
     if (adminCookie) {
       redirectUrl.pathname = "/admin"
     } else {
-      // Redirect regular users to /home instead of / to avoid potential loops
-      redirectUrl.pathname = "/home"
+      // Redirect regular users directly to the root path
+      redirectUrl.pathname = "/"
     }
 
     return NextResponse.redirect(redirectUrl)
