@@ -56,7 +56,8 @@ export async function middleware(req: NextRequest) {
     if (adminCookie) {
       redirectUrl.pathname = "/admin"
     } else {
-      redirectUrl.pathname = "/"
+      // Redirect regular users to /home instead of / to avoid potential loops
+      redirectUrl.pathname = "/home"
     }
 
     return NextResponse.redirect(redirectUrl)

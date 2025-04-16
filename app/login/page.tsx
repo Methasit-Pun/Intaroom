@@ -122,9 +122,10 @@ export default function LoginPage() {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          console.log("Login successful, redirecting to home")
-          // Regular user
-          router.push("/")
+          console.log("Login successful, redirecting to home page")
+
+          // Force a hard navigation to break any potential redirect loops
+          window.location.href = "/home"
         }
       }
     } catch (error: any) {
