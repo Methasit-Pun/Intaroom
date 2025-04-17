@@ -21,11 +21,10 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { Checkbox } from "@/components/ui/checkbox"
 import RulesPoliciesModal from "@/components/rules-policies-modal"
-
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient } from "@/lib/supabase-client"
 
 export default function SummaryPage() {
   const router = useRouter()
@@ -50,14 +49,10 @@ export default function SummaryPage() {
   })
 
   // Initialize Supabase client
-  // Replace this line:
-  // const supabase = createClientComponentClient({
-  //   supabaseUrl,
-  //   supabaseKey: supabaseAnonKey,
-  // })
-
-  // With this:
-  const supabase = getSupabaseClient()
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   useEffect(() => {
     const loadData = async () => {

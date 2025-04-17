@@ -6,11 +6,10 @@ import { ChevronLeft, ChevronRight, Loader2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
 import { MapPin } from "lucide-react"
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient, isUserAuthenticated } from "@/lib/supabase-client"
-
 // Static room data to avoid database queries
 const staticRooms = [
   {
@@ -84,48 +83,27 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [showRoomDetails, setShowRoomDetails] = useState(false)
-  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  // Initialize Supabase client
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   // Check if user is logged in
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        setCheckingAuth(true)
-
-        // Check if user is logged in via localStorage (for admin)
-        if (localStorage.getItem("isAdmin") === "true") {
-          setIsLoggedIn(true)
-          setCheckingAuth(false)
-          return
-        }
-
-        // Check if user is logged in via Supabase
-        const authenticated = await isUserAuthenticated()
-        console.log("Authentication check result:", authenticated)
-
-        setIsLoggedIn(authenticated)
-
-        // If not logged in and not an admin, redirect to login
-        if (!authenticated && !localStorage.getItem("isAdmin")) {
-          console.log("User not authenticated, redirecting to login")
-          router.push("/login")
-        }
-      } catch (error) {
-        console.error("Error checking authentication:", error)
-      } finally {
-        setCheckingAuth(false)
-      }
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      setIsLoggedIn(!!data.session)
     }
 
-    checkAuth()
-  }, [router])
+    checkSession()
+  }, [supabase])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
-    if (!checkingAuth && isLoggedIn) {
-      fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
-    }
-  }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth])
+    fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+  }, [selectedDate, currentRoomIndex])
 
   // Function to fetch reservations
   const fetchReservations = async (roomId: number, date: Date) => {
@@ -136,24 +114,12 @@ export default function RoomReservation() {
       const dateStr = date.toISOString().split("T")[0]
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
-      // Get a fresh Supabase client
-      const supabase = getSupabaseClient()
-
-      // Check if we have a valid session before fetching
-      const { data: sessionData } = await supabase.auth.getSession()
-      console.log("Current session status:", {
-        hasSession: !!sessionData.session,
-        expiresAt: sessionData.session?.expires_at,
-      })
-
       // Direct query to reservations table only, avoiding profiles table
-      const { data, error, status } = await supabase
+      const { data, error } = await supabase
         .from("reservations")
         .select("booking_name, room_id, date, start_time, end_time, status")
         .eq("room_id", roomId)
         .eq("date", dateStr)
-
-      console.log(`Fetch response status: ${status}`)
 
       if (error) {
         console.error("Error fetching reservations:", error)
@@ -288,35 +254,6 @@ export default function RoomReservation() {
     router.push("/my-reservations")
   }
 
-  // Show loading state while checking authentication
-  if (checkingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin mb-4" />
-          <p>Checking authentication status...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // If not logged in, show login button
-  if (!isLoggedIn) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
-        <div className="flex flex-col items-center">
-          <h1 className="text-2xl font-semibold mb-6">
-            <span className="text-[#D4AF37]">INTA</span>ROOM
-          </h1>
-          <p className="mb-6">Please log in to access the room reservation system</p>
-          <Button className="bg-white text-[#5A0D16] hover:bg-gray-100" onClick={() => router.push("/login")}>
-            Login
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white overflow-x-hidden">
       {/* Header with navigation */}
@@ -326,22 +263,11 @@ export default function RoomReservation() {
         </h1>
         {isLoggedIn && (
           <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              className="text-white hover:bg-white/10 sm:flex hidden"
-              onClick={handleMyReservations}
-            >
+            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
               <User className="h-4 w-4 mr-2" />
               My Reservations
             </Button>
-            <Button
-              variant="ghost"
-              className="text-white hover:bg-white/10 flex sm:hidden"
-              onClick={handleMyReservations}
-            >
-              <User className="h-4 w-4" />
-            </Button>
-            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" showTextOnMobile={false} />
+            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
           </div>
         )}
       </div>

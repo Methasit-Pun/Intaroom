@@ -20,9 +20,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
 
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient } from "@/lib/supabase-client"
-
 // Type for reservation data
 interface Reservation {
   id: number
@@ -75,11 +72,10 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState(false)
 
   // Initialize Supabase client
-  // const supabase = createClientComponentClient({
-  //   supabaseUrl,
-  //   supabaseKey: supabaseAnonKey,
-  // })
-  const supabase = getSupabaseClient()
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   // Check if user is authenticated as admin
   useEffect(() => {
