@@ -5,11 +5,10 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Calendar, Clock, Home, AlertCircle, Loader2, Search, Filter, ChevronDown, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import LogoutButton from "@/components/logout-button"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 interface Reservation {
   id: number
@@ -44,10 +43,7 @@ export default function MyReservationsPage() {
   const [statusFilter, setStatusFilter] = useState("All")
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const supabase = getSupabaseClient()
 
   useEffect(() => {
     fetchReservations()

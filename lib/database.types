@@ -1,0 +1,137 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      rooms: {
+        Row: {
+          id: number
+          name: string
+          capacity: number
+          description: string | null
+          image_url: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          capacity: number
+          description?: string | null
+          image_url?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          capacity?: number
+          description?: string | null
+          image_url?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      reservations: {
+        Row: {
+          id: number
+          booking_name: string
+          room_id: number
+          user_id: string
+          date: string
+          start_time: string
+          end_time: string
+          status: string
+          purpose: string
+          attendees: number | null
+          contact_email: string | null
+          contact_phone: string | null
+          confirmation_number: string
+          special_requests: string[] | null
+          check_in_method: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          booking_name: string
+          room_id: number
+          user_id: string
+          date: string
+          start_time: string
+          end_time: string
+          status?: string
+          purpose: string
+          attendees?: number | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          confirmation_number: string
+          special_requests?: string[] | null
+          check_in_method?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          booking_name?: string
+          room_id?: number
+          user_id?: string
+          date?: string
+          start_time?: string
+          end_time?: string
+          status?: string
+          purpose?: string
+          attendees?: number | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          confirmation_number?: string
+          special_requests?: string[] | null
+          check_in_method?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      profiles: {
+        Row: {
+          id: string
+          full_name: string | null
+          username: string | null
+          student_id: string | null
+          department: string | null
+          year_level: string | null
+          created_at: string
+          updated_at: string
+          email: string | null
+          role: string | null
+        }
+        Insert: {
+          id: string
+          full_name?: string | null
+          username?: string | null
+          student_id?: string | null
+          department?: string | null
+          year_level?: string | null
+          created_at?: string
+          updated_at?: string
+          email?: string | null
+          role?: string | null
+        }
+        Update: {
+          id?: string
+          full_name?: string | null
+          username?: string | null
+          student_id?: string | null
+          department?: string | null
+          year_level?: string | null
+          created_at?: string
+          updated_at?: string
+          email?: string | null
+          role?: string | null
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,9 @@ import type { NextRequest } from "next/server"
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
+  // Log the current path for debugging
+  console.log(`Middleware processing path: ${req.nextUrl.pathname}`)
+
   // Create supabase client with cookies
   const supabase = createMiddlewareClient({ req, res })
 
@@ -17,6 +20,7 @@ export async function middleware(req: NextRequest) {
 
   // If this is an admin route and we have the admin cookie, allow access immediately
   if (isAdminRoute && adminCookie) {
+    console.log("Admin route with admin cookie - allowing access")
     return res
   }
 
@@ -24,6 +28,8 @@ export async function middleware(req: NextRequest) {
   const {
     data: { session },
   } = await supabase.auth.getSession()
+
+  console.log(`Session check result: ${!!session}`)
 
   // Define auth routes that don't require authentication
   const isAuthRoute =
@@ -34,15 +40,21 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/register-success") ||
     req.nextUrl.pathname.startsWith("/reset-password")
 
+  // Special case for root path - always allow access
+  const isRootPath = req.nextUrl.pathname === "/"
+
   // If trying to access admin route without admin cookie or session, redirect to login
   if (isAdminRoute && !session && !adminCookie) {
+    console.log("Admin route without auth - redirecting to login")
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = "/login"
     return NextResponse.redirect(redirectUrl)
   }
 
   // If no session and trying to access protected routes, redirect to login
-  if (!session && !isAuthRoute && !adminCookie) {
+  // But allow access to the root path regardless of auth status
+  if (!session && !isAuthRoute && !adminCookie && !isRootPath) {
+    console.log("Protected route without auth - redirecting to login")
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = "/login"
     redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
@@ -51,11 +63,13 @@ export async function middleware(req: NextRequest) {
 
   // If session exists and trying to access auth routes, redirect appropriately
   if ((session || adminCookie) && isAuthRoute) {
+    console.log("Auth route with session - redirecting to appropriate page")
     const redirectUrl = req.nextUrl.clone()
 
     if (adminCookie) {
       redirectUrl.pathname = "/admin"
     } else {
+      // Redirect regular users to the root path
       redirectUrl.pathname = "/"
     }
 

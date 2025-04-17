@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import BookingNameModal from "@/components/booking-name-modal"
 import { AlertCircle, Loader2, ArrowLeft } from "lucide-react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 // Type for time slot data
 interface TimeSlot {
@@ -70,11 +69,8 @@ export default function ReservePage() {
 
   const initialLoadComplete = useRef(false)
 
-  // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  // Initialize Supabase client using the singleton pattern
+  const supabase = getSupabaseClient()
 
   // Get current user
   const getCurrentUser = useCallback(async () => {
@@ -150,13 +146,20 @@ export default function ReservePage() {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Select a date"
 
-    const date = new Date(dateString)
+    // Create a date object and ensure it's interpreted in UTC to avoid timezone issues
+    const date = new Date(dateString + "T00:00:00Z")
+
+    // Add a day to fix the date issue
+    date.setDate(date.getDate() + 1)
+
     return (
       date.toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
-      }) + getOrdinalSuffix(date.getDate())
+      }) +
+      " " +
+      getOrdinalSuffix(date.getDate())
     )
   }
 

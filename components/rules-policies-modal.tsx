@@ -19,7 +19,7 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
           <DialogTitle className="text-center text-xl font-semibold text-[#5A0D16]">Rules & Policies</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="thai" className="w-full">
+        <Tabs defaultValue="thai" className="w-full flex flex-col h-full">
           <div className="px-6">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="thai">ภาษาไทย</TabsTrigger>
@@ -27,9 +27,9 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
             </TabsList>
           </div>
 
-          <TabsContent value="thai" className="mt-0">
-            <ScrollArea className="max-h-[60vh] px-6 pb-6">
-              <div className="space-y-6">
+          <TabsContent value="thai" className="mt-0 flex-1 overflow-hidden">
+            <ScrollArea className="h-[calc(70vh-120px)] px-6 pb-6">
+              <div className="space-y-6 pr-4">
                 <section className="bg-amber-50 p-4 rounded-lg border border-amber-200">
                   <h3 className="text-base font-semibold mb-3 text-amber-800 border-b pb-2 border-amber-200">
                     📄 เงื่อนไขการจองห้อง
@@ -89,13 +89,33 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
                     </li>
                   </ul>
                 </section>
+
+                <section className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h3 className="text-base font-semibold mb-3 text-blue-800 border-b pb-2 border-blue-200">
+                    ℹ️ ข้อมูลเพิ่มเติม
+                  </h3>
+                  <ul className="space-y-3 text-sm">
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>หากพบปัญหาในการใช้งานห้อง กรุณาแจ้งเจ้าหน้าที่ทันที</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>การจองห้องถือเป็นการยอมรับเงื่อนไขและกฎระเบียบทั้งหมด</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>ทางเราขอสงวนสิทธิ์ในการเปลี่ยนแปลงเงื่อนไขโดยไม่แจ้งให้ทราบล่วงหน้า</span>
+                    </li>
+                  </ul>
+                </section>
               </div>
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="english" className="mt-0">
-            <ScrollArea className="max-h-[60vh] px-6 pb-6">
-              <div className="space-y-6">
+          <TabsContent value="english" className="mt-0 flex-1 overflow-hidden">
+            <ScrollArea className="h-[calc(70vh-120px)] px-6 pb-6">
+              <div className="space-y-6 pr-4">
                 <section className="bg-amber-50 p-4 rounded-lg border border-amber-200">
                   <h3 className="text-base font-semibold mb-3 text-amber-800 border-b pb-2 border-amber-200">
                     📄 Terms & Conditions
@@ -154,6 +174,26 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
                     <li className="flex items-start">
                       <span className="text-red-500 mr-2">🛑</span>
                       <span>Improper use of the room may result in immediate suspension of privileges</span>
+                    </li>
+                  </ul>
+                </section>
+
+                <section className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h3 className="text-base font-semibold mb-3 text-blue-800 border-b pb-2 border-blue-200">
+                    ℹ️ Additional Information
+                  </h3>
+                  <ul className="space-y-3 text-sm">
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>If you encounter any issues with the room, please notify staff immediately</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>By reserving a room, you agree to all terms and regulations</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-blue-600 mr-2 font-bold">•</span>
+                      <span>We reserve the right to modify these terms without prior notice</span>
                     </li>
                   </ul>
                 </section>
