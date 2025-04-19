@@ -104,7 +104,12 @@ export default function ReservePage() {
     // Only update state if values have changed
     if (roomParam && roomParam !== roomId) setRoomId(roomParam)
     if (roomNameParam && roomNameParam !== roomName) setRoomName(roomNameParam)
-    if (dateParam && dateParam !== date) setDate(dateParam)
+    const dateParamFromParams = searchParams.get("date")
+    if (dateParamFromParams && dateParamFromParams !== date) {
+      // Ensure we're using the date string directly without timezone conversion
+      setDate(dateParamFromParams)
+      console.log("Date set from params:", dateParamFromParams)
+    }
 
     // Reset selection state
     setSelectedSlots([])
@@ -257,7 +262,7 @@ export default function ReservePage() {
             booking_name: bookingName,
             room_id: Number.parseInt(roomId),
             user_id: userId,
-            date: date,
+            date: date, // This should be the YYYY-MM-DD string from the URL params
             start_time: startTime,
             end_time: endTime,
             status: "Pending",

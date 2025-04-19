@@ -30,12 +30,6 @@ export function getSupabaseClient() {
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
-          storageKey: "intania-room-auth", // Custom storage key to avoid conflicts
-        },
-        global: {
-          headers: {
-            "x-client-info": "intania-room-reservation",
-          },
         },
       },
     })
@@ -49,7 +43,7 @@ export function resetSupabaseClient() {
   return getSupabaseClient()
 }
 
-// Add a function to check if the user is authenticated
+// Update the isUserAuthenticated function to handle refresh token errors
 export async function isUserAuthenticated() {
   try {
     const supabase = getSupabaseClient()
@@ -57,30 +51,59 @@ export async function isUserAuthenticated() {
 
     if (error) {
       console.error("Error checking authentication:", error)
+
+      // If we get a refresh token error, clear the session to prevent repeated errors
+      if (error.message?.includes("refresh_token_not_found") || (error as any)?.code === "refresh_token_not_found") {
+        console.log("Refresh token not found, clearing session")
+        await supabase.auth.signOut()
+        return false
+      }
+
       return false
     }
 
     return !!data.session
   } catch (error) {
     console.error("Exception checking authentication:", error)
+
+    // If there's an exception, try to sign out to clear any invalid session data
+    try {
+      const supabase = getSupabaseClient()
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error("Failed to sign out after error:", e)
+    }
+
     return false
   }
 }
 
-// Add a function to get the current user
-export async function getCurrentUser() {
-  try {
-    const supabase = getSupabaseClient()
-    const { data, error } = await supabase.auth.getUser()
+// Add a function to handle auth errors gracefully
+export async function handleAuthError(error: any) {
+  console.error("Auth error:", error)
 
-    if (error) {
-      console.error("Error getting user:", error)
-      return null
+  // Check if it's a refresh token error
+  if (
+    error?.message?.includes("refresh_token_not_found") ||
+    error?.code === "refresh_token_not_found" ||
+    error?.__isAuthError
+  ) {
+    console.log("Handling auth error by signing out")
+    try {
+      const supabase = getSupabaseClient()
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error("Failed to sign out after auth error:", e)
     }
 
-    return data.user
-  } catch (error) {
-    console.error("Exception getting user:", error)
-    return null
+    // Clear any local storage items related to auth
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("supabase.auth.token")
+      localStorage.removeItem("supabase.auth.expires_at")
+    }
+
+    return true // Error was handled
   }
+
+  return false // Error wasn't handled
 }

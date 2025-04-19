@@ -47,14 +47,40 @@ export default function LoginPage() {
         }
 
         // For regular users, check Supabase session
-        const { data } = await supabase.auth.getSession()
+        try {
+          const { data, error } = await supabase.auth.getSession()
 
-        if (data.session) {
-          console.log("User is already logged in, redirecting to /")
-          // Use window.location for a hard redirect
-          window.location.href = "/"
-        } else {
-          console.log("No active session found")
+          if (error) {
+            console.error("Session error during check:", error)
+
+            // If it's a refresh token error, sign out to clear invalid session data
+            if (
+              error.message?.includes("refresh_token_not_found") ||
+              (error as any)?.code === "refresh_token_not_found"
+            ) {
+              console.log("Refresh token error, signing out")
+              await supabase.auth.signOut()
+            }
+
+            return // Stay on login page
+          }
+
+          if (data.session) {
+            console.log("User is already logged in, redirecting to /")
+            // Use window.location for a hard redirect
+            window.location.href = "/"
+          } else {
+            console.log("No active session found")
+          }
+        } catch (error) {
+          console.error("Error checking session:", error)
+
+          // Try to sign out to clear any invalid session data
+          try {
+            await supabase.auth.signOut()
+          } catch (e) {
+            console.error("Failed to sign out after error:", e)
+          }
         }
       } catch (error) {
         console.error("Session check error:", error)

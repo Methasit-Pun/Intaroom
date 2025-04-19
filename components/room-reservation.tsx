@@ -10,6 +10,7 @@ import LogoutButton from "@/components/logout-button"
 import { MapPin } from "lucide-react"
 // Update the Supabase client initialization to use the singleton pattern
 import { getSupabaseClient, isUserAuthenticated } from "@/lib/supabase-client"
+import { formatDateToYYYYMMDD } from "@/lib/date-utils"
 
 // Static room data to avoid database queries
 const staticRooms = [
@@ -78,7 +79,13 @@ export const extendedTimeSlots = [
 export default function RoomReservation() {
   const router = useRouter()
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // Create a date object for today in the local timezone
+    const today = new Date()
+    // Reset the time to midnight to avoid timezone issues
+    today.setHours(0, 0, 0, 0)
+    return today
+  })
   const [reservations, setReservations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,18 +107,29 @@ export default function RoomReservation() {
         }
 
         // Check if user is logged in via Supabase
-        const authenticated = await isUserAuthenticated()
-        console.log("Authentication check result:", authenticated)
+        try {
+          const authenticated = await isUserAuthenticated()
+          console.log("Authentication check result:", authenticated)
+          setIsLoggedIn(authenticated)
 
-        setIsLoggedIn(authenticated)
+          // If not logged in and not an admin, redirect to login
+          if (!authenticated && !localStorage.getItem("isAdmin")) {
+            console.log("User not authenticated, redirecting to login")
+            router.push("/login")
+          }
+        } catch (authError) {
+          console.error("Auth check failed:", authError)
 
-        // If not logged in and not an admin, redirect to login
-        if (!authenticated && !localStorage.getItem("isAdmin")) {
-          console.log("User not authenticated, redirecting to login")
+          // Handle refresh token errors
+          const supabase = getSupabaseClient()
+          await supabase.auth.signOut()
+
+          setIsLoggedIn(false)
           router.push("/login")
         }
       } catch (error) {
         console.error("Error checking authentication:", error)
+        setIsLoggedIn(false)
       } finally {
         setCheckingAuth(false)
       }
@@ -139,31 +157,55 @@ export default function RoomReservation() {
       // Get a fresh Supabase client
       const supabase = getSupabaseClient()
 
-      // Check if we have a valid session before fetching
-      const { data: sessionData } = await supabase.auth.getSession()
-      console.log("Current session status:", {
-        hasSession: !!sessionData.session,
-        expiresAt: sessionData.session?.expires_at,
-      })
+      try {
+        // Check if we have a valid session before fetching
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
 
-      // Direct query to reservations table only, avoiding profiles table
-      const { data, error, status } = await supabase
-        .from("reservations")
-        .select("booking_name, room_id, date, start_time, end_time, status")
-        .eq("room_id", roomId)
-        .eq("date", dateStr)
+        if (sessionError) {
+          console.error("Session error:", sessionError)
 
-      console.log(`Fetch response status: ${status}`)
+          // Handle refresh token errors
+          if (
+            sessionError.message?.includes("refresh_token_not_found") ||
+            (sessionError as any)?.code === "refresh_token_not_found"
+          ) {
+            await supabase.auth.signOut()
+            setIsLoggedIn(false)
+            router.push("/login")
+            return
+          }
+        }
 
-      if (error) {
-        console.error("Error fetching reservations:", error)
-        // Use empty array instead of throwing error
+        console.log("Current session status:", {
+          hasSession: !!sessionData.session,
+          expiresAt: sessionData.session?.expires_at,
+        })
+
+        // Direct query to reservations table only, avoiding profiles table
+        const { data, error, status } = await supabase
+          .from("reservations")
+          .select("booking_name, room_id, date, start_time, end_time, status")
+          .eq("room_id", roomId)
+          .eq("date", dateStr)
+
+        console.log(`Fetch response status: ${status}`)
+
+        if (error) {
+          console.error("Error fetching reservations:", error)
+          // Use empty array instead of throwing error
+          setReservations([])
+          return
+        }
+
+        console.log(`Found ${data?.length || 0} reservations:`, data)
+        setReservations(data || [])
+      } catch (authError) {
+        console.error("Auth error during fetch:", authError)
+
+        // Handle auth errors
+        await handleAuthError(authError)
         setReservations([])
-        return
       }
-
-      console.log(`Found ${data?.length || 0} reservations:`, data)
-      setReservations(data || [])
     } catch (error: any) {
       console.error("Error in fetchReservations:", error)
       setReservations([])
@@ -278,7 +320,8 @@ export default function RoomReservation() {
     const params = new URLSearchParams()
     params.set("room", currentRoom.id.toString())
     params.set("roomName", currentRoom.name)
-    params.set("date", selectedDate.toISOString().split("T")[0])
+    // Format date as YYYY-MM-DD in local timezone to avoid UTC conversion issues
+    params.set("date", formatDateToYYYYMMDD(selectedDate))
     params.set("availability", JSON.stringify(availabilityData))
 
     router.push(`/reserve?${params.toString()}`)
@@ -315,6 +358,26 @@ export default function RoomReservation() {
         </div>
       </div>
     )
+  }
+
+  // Function to handle authentication errors
+  const handleAuthError = async (authError: any) => {
+    console.error("Handling auth error:", authError)
+
+    // Handle refresh token errors
+    if (
+      authError.message?.includes("refresh_token_not_found") ||
+      (authError as any)?.code === "refresh_token_not_found"
+    ) {
+      const supabase = getSupabaseClient()
+      await supabase.auth.signOut()
+      setIsLoggedIn(false)
+      router.push("/login")
+      return
+    }
+
+    // Handle other types of authentication errors as needed
+    setError("Authentication error occurred. Please try again.")
   }
 
   return (

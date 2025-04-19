@@ -123,13 +123,24 @@ export default function SummaryPage() {
   const formatDate = (dateString: string) => {
     if (!dateString) return ""
 
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
+    try {
+      // Parse the date string directly without timezone conversion
+      // Format: YYYY-MM-DD
+      const [year, month, day] = dateString.split("-").map((num) => Number.parseInt(num, 10))
+
+      // Create date with local timezone (month is 0-indexed in JS Date)
+      const date = new Date(year, month - 1, day)
+
+      return date.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    } catch (error) {
+      console.error("Error formatting date:", error, dateString)
+      return dateString
+    }
   }
 
   // Calculate duration from time slots
