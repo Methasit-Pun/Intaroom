@@ -8,8 +8,7 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import LogoutButton from "@/components/logout-button"
 import { MapPin } from "lucide-react"
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient, isUserAuthenticated } from "@/lib/supabase-client"
+import { getSupabaseClient, isUserAuthenticated, getCachedData } from "@/lib/supabase-client"
 import { formatDateToYYYYMMDD } from "@/lib/date-utils"
 
 // Static room data to avoid database queries
@@ -80,9 +79,7 @@ export default function RoomReservation() {
   const router = useRouter()
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
   const [selectedDate, setSelectedDate] = useState(() => {
-    // Create a date object for today in the local timezone
     const today = new Date()
-    // Reset the time to midnight to avoid timezone issues
     today.setHours(0, 0, 0, 0)
     return today
   })
@@ -92,6 +89,8 @@ export default function RoomReservation() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [showRoomDetails, setShowRoomDetails] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
+
+  const currentRoom = staticRooms[currentRoomIndex]
 
   // Check if user is logged in
   useEffect(() => {
@@ -107,26 +106,8 @@ export default function RoomReservation() {
         }
 
         // Check if user is logged in via Supabase
-        try {
-          const authenticated = await isUserAuthenticated()
-          console.log("Authentication check result:", authenticated)
-          setIsLoggedIn(authenticated)
-
-          // If not logged in and not an admin, redirect to login
-          if (!authenticated && !localStorage.getItem("isAdmin")) {
-            console.log("User not authenticated, redirecting to login")
-            router.push("/login")
-          }
-        } catch (authError) {
-          console.error("Auth check failed:", authError)
-
-          // Handle refresh token errors
-          const supabase = getSupabaseClient()
-          await supabase.auth.signOut()
-
-          setIsLoggedIn(false)
-          router.push("/login")
-        }
+        const authenticated = await isUserAuthenticated()
+        setIsLoggedIn(authenticated)
       } catch (error) {
         console.error("Error checking authentication:", error)
         setIsLoggedIn(false)
@@ -136,85 +117,54 @@ export default function RoomReservation() {
     }
 
     checkAuth()
-  }, [router])
+  }, [])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
-    if (!checkingAuth && isLoggedIn) {
-      fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+    if (!checkingAuth && currentRoom?.id) {
+      fetchReservations(currentRoom.id, selectedDate)
     }
   }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth])
 
-  // Function to fetch reservations
+  // Function to fetch reservations with caching
   const fetchReservations = async (roomId: number, date: Date) => {
     if (!roomId) return
 
     setLoading(true)
+    setError(null)
+
     try {
-      const dateStr = date.toISOString().split("T")[0]
-      console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
+      const dateStr = formatDateToYYYYMMDD(date)
+      const cacheKey = `reservations-${roomId}-${dateStr}`
 
-      // Get a fresh Supabase client
-      const supabase = getSupabaseClient()
+      const data = await getCachedData(
+        cacheKey,
+        async () => {
+          const supabase = getSupabaseClient()
+          const { data, error } = await supabase
+            .from("reservations")
+            .select("booking_name, room_id, date, start_time, end_time, status")
+            .eq("room_id", roomId)
+            .eq("date", dateStr)
 
-      try {
-        // Check if we have a valid session before fetching
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          console.error("Session error:", sessionError)
-
-          // Handle refresh token errors
-          if (
-            sessionError.message?.includes("refresh_token_not_found") ||
-            (sessionError as any)?.code === "refresh_token_not_found"
-          ) {
-            await supabase.auth.signOut()
-            setIsLoggedIn(false)
-            router.push("/login")
-            return
+          if (error) {
+            console.error("Error fetching reservations:", error)
+            return []
           }
-        }
 
-        console.log("Current session status:", {
-          hasSession: !!sessionData.session,
-          expiresAt: sessionData.session?.expires_at,
-        })
+          return data || []
+        },
+        300000, // 5 minute cache
+      )
 
-        // Direct query to reservations table only, avoiding profiles table
-        const { data, error, status } = await supabase
-          .from("reservations")
-          .select("booking_name, room_id, date, start_time, end_time, status")
-          .eq("room_id", roomId)
-          .eq("date", dateStr)
-
-        console.log(`Fetch response status: ${status}`)
-
-        if (error) {
-          console.error("Error fetching reservations:", error)
-          // Use empty array instead of throwing error
-          setReservations([])
-          return
-        }
-
-        console.log(`Found ${data?.length || 0} reservations:`, data)
-        setReservations(data || [])
-      } catch (authError) {
-        console.error("Auth error during fetch:", authError)
-
-        // Handle auth errors
-        await handleAuthError(authError)
-        setReservations([])
-      }
-    } catch (error: any) {
+      setReservations(data)
+    } catch (error) {
       console.error("Error in fetchReservations:", error)
       setReservations([])
     } finally {
       setLoading(false)
     }
   }
-
-  const currentRoom = staticRooms[currentRoomIndex]
 
   // Navigation functions for room carousel
   const prevRoom = () => {
@@ -241,13 +191,6 @@ export default function RoomReservation() {
   }
 
   const weekDates = getWeekDates()
-
-  // Format date range for display
-  const formatDateRange = () => {
-    const firstDate = weekDates[0]
-    const lastDate = weekDates[6]
-    return `${firstDate.toLocaleDateString("en-US", { month: "short" })} ${firstDate.getDate()}-${lastDate.getDate()}`
-  }
 
   // Generate calendar days for the current month view
   const generateCalendarDays = () => {
@@ -276,7 +219,7 @@ export default function RoomReservation() {
 
   // Check if a time slot has a reservation
   const getReservation = (time: string) => {
-    const dateStr = selectedDate.toISOString().split("T")[0]
+    const dateStr = formatDateToYYYYMMDD(selectedDate)
     let hour = Number.parseInt(time.split(" ")[0])
     const period = time.split(" ")[1]
 
@@ -310,24 +253,13 @@ export default function RoomReservation() {
     }))
   }
 
-  // Update the handleCreateReservation function to use window.location for more reliable navigation
+  // Handle create reservation
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
-    setLoading(true)
     try {
-      console.log("Create reservation button clicked")
-
       // Generate availability data
       const availabilityData = generateAvailabilityData()
-
-      // Log data before navigation
-      console.log("Navigating with data:", {
-        roomId: currentRoom.id,
-        roomName: currentRoom.name,
-        date: formatDateToYYYYMMDD(selectedDate),
-        availabilityCount: availabilityData.length,
-      })
 
       // Create URL parameters
       const params = new URLSearchParams()
@@ -336,46 +268,17 @@ export default function RoomReservation() {
       params.set("date", formatDateToYYYYMMDD(selectedDate))
       params.set("availability", JSON.stringify(availabilityData))
 
-      const url = `/reserve?${params.toString()}`
-      console.log("Navigating to:", url)
-
-      // Use window.location for more reliable navigation in production
-      window.location.href = url
+      // Use router.push for navigation
+      router.push(`/reserve?${params.toString()}`)
     } catch (error) {
       console.error("Error in handleCreateReservation:", error)
       setError("Failed to create reservation. Please try again.")
-      setLoading(false)
     }
   }
 
-  // Update the handleMyReservations function to use window.location
+  // Handle my reservations navigation
   const handleMyReservations = () => {
-    try {
-      console.log("My Reservations button clicked")
-      // Use window.location for more reliable navigation in production
-      window.location.href = "/my-reservations"
-    } catch (error) {
-      console.error("Error navigating to my reservations:", error)
-    }
-  }
-
-  const handleAuthError = async (authError: any) => {
-    console.error("Handling auth error:", authError)
-
-    // Handle refresh token errors
-    if (
-      authError.message?.includes("refresh_token_not_found") ||
-      (authError as any)?.code === "refresh_token_not_found"
-    ) {
-      const supabase = getSupabaseClient()
-      await supabase.auth.signOut()
-      setIsLoggedIn(false)
-      router.push("/login")
-      return
-    }
-
-    // Handle other types of authentication errors as needed
-    setError("Authentication error occurred. Please try again.")
+    router.push("/my-reservations")
   }
 
   return (
@@ -419,6 +322,7 @@ export default function RoomReservation() {
                 alt={currentRoom.name}
                 fill
                 className="object-cover"
+                priority
               />
               {/* Add a dark overlay to dim the image */}
               <div
@@ -616,6 +520,7 @@ export default function RoomReservation() {
           </div>
         </div>
       </div>
+
       {/* Room Details Modal */}
       {showRoomDetails && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">

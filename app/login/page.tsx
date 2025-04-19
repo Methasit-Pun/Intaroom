@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { CheckCircle, Loader2 } from "lucide-react"
-import { resetSupabaseClient } from "@/lib/supabase-client"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -30,48 +30,33 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Update the login page to handle authentication more robustly
-  // Add this function at the beginning of the LoginPage component
+  // Check for existing session
   useEffect(() => {
     const checkSession = async () => {
       try {
         setCheckingSession(true)
 
-        // Reset the Supabase client to ensure a fresh connection
-        const supabase = resetSupabaseClient()
-
         // Check if admin is already logged in via localStorage
-        if (localStorage.getItem("isAdmin") === "true") {
+        if (typeof window !== "undefined" && localStorage.getItem("isAdmin") === "true") {
           console.log("Admin is already logged in, redirecting to /admin")
-          window.location.href = "/admin"
+          router.push("/admin")
           return
         }
 
         // For regular users, check Supabase session
+        const supabase = getSupabaseClient()
         try {
-          console.log("Checking for existing session...")
           const { data, error } = await supabase.auth.getSession()
 
           if (error) {
             console.error("Session error during check:", error)
-
-            // If it's a refresh token error, sign out to clear invalid session data
-            if (
-              error.message?.includes("refresh_token_not_found") ||
-              (error as any)?.code === "refresh_token_not_found"
-            ) {
-              console.log("Refresh token error, signing out")
-              await supabase.auth.signOut()
-            }
-
             setCheckingSession(false)
             return // Stay on login page
           }
 
           if (data.session) {
             console.log("User is already logged in, redirecting to /")
-            // Use window.location for a hard redirect
-            window.location.href = "/"
+            router.push("/")
           } else {
             console.log("No active session found")
             setCheckingSession(false)
@@ -79,13 +64,6 @@ export default function LoginPage() {
         } catch (error) {
           console.error("Error checking session:", error)
           setCheckingSession(false)
-
-          // Try to sign out to clear any invalid session data
-          try {
-            await supabase.auth.signOut()
-          } catch (e) {
-            console.error("Failed to sign out after error:", e)
-          }
         }
       } catch (error) {
         console.error("Session check error:", error)
@@ -94,26 +72,18 @@ export default function LoginPage() {
     }
 
     checkSession()
-  }, [])
+  }, [router])
 
   // Handle login with separate flows for admin and regular users
-  // Update the handleLogin function to use window.location for navigation
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
-    console.log("Login attempt started", { userType, username })
-
     try {
       if (userType === "admin") {
         // Admin login - completely bypass Supabase auth
-        console.log("Attempting admin login")
-
-        // Check hardcoded admin credentials
         if (username === "admin1" && password === "admin123") {
-          console.log("Admin credentials valid, setting cookies and localStorage")
-
           // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
@@ -121,18 +91,15 @@ export default function LoginPage() {
           // Set a cookie for server-side checks (middleware)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
-          // Redirect to admin page using window.location for reliability
-          window.location.href = "/admin"
+          // Redirect to admin page
+          router.push("/admin")
           return
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
         // Regular user login - use Supabase authentication
-        console.log("Attempting regular user login with username:", username)
-
-        // Get a fresh Supabase client
-        const supabase = resetSupabaseClient()
+        const supabase = getSupabaseClient()
 
         // First, get the email associated with the username
         const { data: profileData, error: profileError } = await supabase
@@ -141,20 +108,15 @@ export default function LoginPage() {
           .eq("username", username)
           .single()
 
-        console.log("Profile lookup result:", { profileData, profileError })
-
         if (profileError || !profileData) {
           throw new Error("Username not found. Please check your username and try again.")
         }
 
         // Now sign in with the email and password
-        console.log("Found email, attempting sign in with:", profileData.email)
         const { data, error } = await supabase.auth.signInWithPassword({
           email: profileData.email,
           password,
         })
-
-        console.log("Sign in result:", { success: !!data.user, error })
 
         if (error) throw error
 
@@ -164,13 +126,11 @@ export default function LoginPage() {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          console.log("Login successful, redirecting to home page")
-
           // Store a flag in localStorage to indicate successful login
           localStorage.setItem("userLoggedIn", "true")
 
-          // Force a hard navigation to break any potential redirect loops
-          window.location.href = "/"
+          // Redirect to home page
+          router.push("/")
           return
         }
       }
@@ -273,7 +233,6 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            {/* Updated login button with black text and font size 20 */}
             <button
               type="submit"
               disabled={loading}
