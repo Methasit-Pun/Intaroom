@@ -19,6 +19,7 @@ export function getSupabaseClient() {
         hasUrl: !!supabaseUrl,
         hasKey: !!supabaseAnonKey,
       })
+      throw new Error("Database configuration is missing. Please contact support.")
     }
 
     supabaseClient = createClientComponentClient<Database>({
@@ -30,9 +31,30 @@ export function getSupabaseClient() {
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
+          // Add storage option to ensure consistent storage mechanism
+          storage: {
+            getItem: (key) => {
+              if (typeof window === "undefined") return null
+              return window.localStorage.getItem(key)
+            },
+            setItem: (key, value) => {
+              if (typeof window === "undefined") return
+              window.localStorage.setItem(key, value)
+            },
+            removeItem: (key) => {
+              if (typeof window === "undefined") return
+              window.localStorage.removeItem(key)
+            },
+          },
         },
       },
     })
+
+    // Test the connection
+    supabaseClient.auth.getSession().then(
+      () => console.log("Supabase client initialized successfully"),
+      (error) => console.error("Supabase initialization test failed:", error),
+    )
   }
   return supabaseClient
 }
@@ -43,10 +65,11 @@ export function resetSupabaseClient() {
   return getSupabaseClient()
 }
 
-// Update the isUserAuthenticated function to handle refresh token errors
+// Update the isUserAuthenticated function to handle refresh token errors better
 export async function isUserAuthenticated() {
   try {
     const supabase = getSupabaseClient()
+    console.log("Checking if user is authenticated...")
     const { data, error } = await supabase.auth.getSession()
 
     if (error) {
@@ -62,7 +85,9 @@ export async function isUserAuthenticated() {
       return false
     }
 
-    return !!data.session
+    const isAuth = !!data.session
+    console.log("Authentication check result:", isAuth)
+    return isAuth
   } catch (error) {
     console.error("Exception checking authentication:", error)
 

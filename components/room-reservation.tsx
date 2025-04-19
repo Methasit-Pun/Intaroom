@@ -310,57 +310,55 @@ export default function RoomReservation() {
     }))
   }
 
+  // Update the handleCreateReservation function to use window.location for more reliable navigation
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
-    // Generate availability data
-    const availabilityData = generateAvailabilityData()
+    setLoading(true)
+    try {
+      console.log("Create reservation button clicked")
 
-    // Navigate to the reservation page with room, date, and availability info
-    const params = new URLSearchParams()
-    params.set("room", currentRoom.id.toString())
-    params.set("roomName", currentRoom.name)
-    // Format date as YYYY-MM-DD in local timezone to avoid UTC conversion issues
-    params.set("date", formatDateToYYYYMMDD(selectedDate))
-    params.set("availability", JSON.stringify(availabilityData))
+      // Generate availability data
+      const availabilityData = generateAvailabilityData()
 
-    router.push(`/reserve?${params.toString()}`)
+      // Log data before navigation
+      console.log("Navigating with data:", {
+        roomId: currentRoom.id,
+        roomName: currentRoom.name,
+        date: formatDateToYYYYMMDD(selectedDate),
+        availabilityCount: availabilityData.length,
+      })
+
+      // Create URL parameters
+      const params = new URLSearchParams()
+      params.set("room", currentRoom.id.toString())
+      params.set("roomName", currentRoom.name)
+      params.set("date", formatDateToYYYYMMDD(selectedDate))
+      params.set("availability", JSON.stringify(availabilityData))
+
+      const url = `/reserve?${params.toString()}`
+      console.log("Navigating to:", url)
+
+      // Use window.location for more reliable navigation in production
+      window.location.href = url
+    } catch (error) {
+      console.error("Error in handleCreateReservation:", error)
+      setError("Failed to create reservation. Please try again.")
+      setLoading(false)
+    }
   }
 
+  // Update the handleMyReservations function to use window.location
   const handleMyReservations = () => {
-    router.push("/my-reservations")
+    try {
+      console.log("My Reservations button clicked")
+      // Use window.location for more reliable navigation in production
+      window.location.href = "/my-reservations"
+    } catch (error) {
+      console.error("Error navigating to my reservations:", error)
+    }
   }
 
-  // Show loading state while checking authentication
-  if (checkingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin mb-4" />
-          <p>Checking authentication status...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // If not logged in, show login button
-  if (!isLoggedIn) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] text-white">
-        <div className="flex flex-col items-center">
-          <h1 className="text-2xl font-semibold mb-6">
-            <span className="text-[#D4AF37]">INTA</span>ROOM
-          </h1>
-          <p className="mb-6">Please log in to access the room reservation system</p>
-          <Button className="bg-white text-[#5A0D16] hover:bg-gray-100" onClick={() => router.push("/login")}>
-            Login
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  // Function to handle authentication errors
   const handleAuthError = async (authError: any) => {
     console.error("Handling auth error:", authError)
 
@@ -603,6 +601,18 @@ export default function RoomReservation() {
                 "Create a New Reservation"
               )}
             </Button>
+
+            <div className="text-center mt-2">
+              <p className="text-white/70 text-sm">
+                Button not working?{" "}
+                <a
+                  href={`/reserve?room=${currentRoom.id}&roomName=${encodeURIComponent(currentRoom.name)}&date=${formatDateToYYYYMMDD(selectedDate)}`}
+                  className="underline hover:text-white"
+                >
+                  Click here instead
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       </div>

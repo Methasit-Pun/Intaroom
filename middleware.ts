@@ -2,12 +2,21 @@ import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-// Update the middleware function to handle auth errors
+// Update the middleware function to prevent redirect loops
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
   // Log the current path for debugging
   console.log(`Middleware processing path: ${req.nextUrl.pathname}`)
+
+  // Check for potential redirect loops
+  const redirectCount = Number.parseInt(req.cookies.get("redirectCount")?.value || "0")
+  if (redirectCount > 3) {
+    console.error("Detected potential redirect loop, allowing request to proceed")
+    const resetRes = NextResponse.next()
+    resetRes.cookies.set("redirectCount", "0")
+    return resetRes
+  }
 
   // Create supabase client with cookies
   const supabase = createMiddlewareClient({ req, res })
@@ -55,7 +64,9 @@ export async function middleware(req: NextRequest) {
         console.log("Refresh token error, redirecting to login")
         const redirectUrl = req.nextUrl.clone()
         redirectUrl.pathname = "/login"
-        return NextResponse.redirect(redirectUrl)
+        const redirectRes = NextResponse.redirect(redirectUrl)
+        redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
+        return redirectRes
       }
     }
 
@@ -66,7 +77,9 @@ export async function middleware(req: NextRequest) {
       console.log("Admin route without auth - redirecting to login")
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
-      return NextResponse.redirect(redirectUrl)
+      const redirectRes = NextResponse.redirect(redirectUrl)
+      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
+      return redirectRes
     }
 
     // If no session and trying to access protected routes, redirect to login
@@ -76,7 +89,9 @@ export async function middleware(req: NextRequest) {
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
       redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
-      return NextResponse.redirect(redirectUrl)
+      const redirectRes = NextResponse.redirect(redirectUrl)
+      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
+      return redirectRes
     }
 
     // If session exists and trying to access auth routes, redirect appropriately
@@ -91,7 +106,9 @@ export async function middleware(req: NextRequest) {
         redirectUrl.pathname = "/"
       }
 
-      return NextResponse.redirect(redirectUrl)
+      const redirectRes = NextResponse.redirect(redirectUrl)
+      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
+      return redirectRes
     }
   } catch (error) {
     console.error("Exception in middleware:", error)
@@ -100,10 +117,14 @@ export async function middleware(req: NextRequest) {
     if (!isAuthRoute && !isRootPath) {
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
-      return NextResponse.redirect(redirectUrl)
+      const redirectRes = NextResponse.redirect(redirectUrl)
+      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
+      return redirectRes
     }
   }
 
+  // Reset redirect count for successful requests
+  res.cookies.set("redirectCount", "0")
   return res
 }
 

@@ -30,7 +30,8 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Check if already logged in
+  // Update the login page to handle authentication more robustly
+  // Add this function at the beginning of the LoginPage component
   useEffect(() => {
     const checkSession = async () => {
       try {
@@ -42,12 +43,13 @@ export default function LoginPage() {
         // Check if admin is already logged in via localStorage
         if (localStorage.getItem("isAdmin") === "true") {
           console.log("Admin is already logged in, redirecting to /admin")
-          router.push("/admin")
+          window.location.href = "/admin"
           return
         }
 
         // For regular users, check Supabase session
         try {
+          console.log("Checking for existing session...")
           const { data, error } = await supabase.auth.getSession()
 
           if (error) {
@@ -62,6 +64,7 @@ export default function LoginPage() {
               await supabase.auth.signOut()
             }
 
+            setCheckingSession(false)
             return // Stay on login page
           }
 
@@ -71,9 +74,11 @@ export default function LoginPage() {
             window.location.href = "/"
           } else {
             console.log("No active session found")
+            setCheckingSession(false)
           }
         } catch (error) {
           console.error("Error checking session:", error)
+          setCheckingSession(false)
 
           // Try to sign out to clear any invalid session data
           try {
@@ -84,15 +89,15 @@ export default function LoginPage() {
         }
       } catch (error) {
         console.error("Session check error:", error)
-      } finally {
         setCheckingSession(false)
       }
     }
 
     checkSession()
-  }, [router])
+  }, [])
 
   // Handle login with separate flows for admin and regular users
+  // Update the handleLogin function to use window.location for navigation
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -116,8 +121,9 @@ export default function LoginPage() {
           // Set a cookie for server-side checks (middleware)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
-          // Redirect to admin page
+          // Redirect to admin page using window.location for reliability
           window.location.href = "/admin"
+          return
         } else {
           throw new Error("Invalid admin credentials")
         }
@@ -165,6 +171,7 @@ export default function LoginPage() {
 
           // Force a hard navigation to break any potential redirect loops
           window.location.href = "/"
+          return
         }
       }
     } catch (error: any) {
