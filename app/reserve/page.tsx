@@ -141,6 +141,15 @@ export default function ReservePage() {
   // Initialize component
   useEffect(() => {
     if (!initialLoadComplete.current) {
+      // Check if we're coming from a navigation
+      const navigationInProgress = localStorage.getItem("navigationInProgress")
+      if (navigationInProgress) {
+        // Clear the flag
+        localStorage.removeItem("navigationInProgress")
+        localStorage.removeItem("lastNavigationTimestamp")
+        console.log("Navigation in progress detected, skipping initial loading state")
+      }
+
       getCurrentUser()
       loadDataFromParams()
       initialLoadComplete.current = true
