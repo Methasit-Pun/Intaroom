@@ -5,11 +5,10 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Calendar, Clock, Home, AlertCircle, Loader2, Search, Filter, ChevronDown, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import LogoutButton from "@/components/logout-button"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 interface Reservation {
   id: number
@@ -42,20 +41,31 @@ export default function MyReservationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const supabase = getSupabaseClient()
 
+  // Check for navigation in progress
   useEffect(() => {
+    // Check if we're coming from a navigation
+    const navigationInProgress = localStorage.getItem("navigationInProgress")
+    if (navigationInProgress) {
+      // Clear the flag
+      localStorage.removeItem("navigationInProgress")
+      localStorage.removeItem("lastNavigationTimestamp")
+      console.log("Navigation in progress detected, skipping initial loading state")
+      setCheckingAuth(false)
+    }
+
     fetchReservations()
   }, [])
 
   // Group reservations by confirmation number base AND date
   useEffect(() => {
     if (reservations.length > 0) {
+      console.log("Grouping reservations:", reservations)
       const grouped: { [key: string]: GroupedReservation } = {}
 
       reservations.forEach((reservation) => {
@@ -101,24 +111,54 @@ export default function MyReservationsPage() {
         })
       })
 
-      setGroupedReservations(Object.values(grouped))
+      const groupedArray = Object.values(grouped)
+      console.log("Grouped reservations:", groupedArray)
+      setGroupedReservations(groupedArray)
+    } else {
+      setGroupedReservations([])
     }
   }, [reservations])
 
+  // Update the fetchReservations function to handle auth errors
   const fetchReservations = async () => {
     setLoading(true)
     setError(null)
+    setDebugInfo(null)
 
     try {
+      console.log("Fetching reservations...")
+
       // Get current user
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession()
 
+      if (sessionError) {
+        console.error("Session error:", sessionError)
+        setDebugInfo({ type: "session_error", error: sessionError })
+
+        // Handle refresh token errors
+        if (
+          sessionError.message?.includes("refresh_token_not_found") ||
+          (sessionError as any)?.code === "refresh_token_not_found"
+        ) {
+          console.log("Refresh token error, signing out")
+          await supabase.auth.signOut()
+          router.push("/login")
+          return
+        }
+
+        throw sessionError
+      }
+
       if (!session?.user) {
+        console.log("No active session, redirecting to login")
         router.push("/login")
         return
       }
+
+      console.log("User authenticated:", session.user.id)
 
       // Fetch user's reservations
       const { data: reservationsData, error: reservationsError } = await supabase
@@ -127,24 +167,45 @@ export default function MyReservationsPage() {
         .eq("user_id", session.user.id)
         .order("date", { ascending: false })
 
-      if (reservationsError) throw reservationsError
+      if (reservationsError) {
+        console.error("Error fetching reservations:", reservationsError)
+        setDebugInfo({ type: "reservations_error", error: reservationsError })
+        throw reservationsError
+      }
+
+      console.log(`Found ${reservationsData?.length || 0} reservations:`, reservationsData)
+
+      if (!reservationsData || reservationsData.length === 0) {
+        console.log("No reservations found")
+        setReservations([])
+        setLoading(false)
+        return
+      }
 
       // Fetch room names for each reservation
       const reservationsWithRoomNames = await Promise.all(
-        (reservationsData || []).map(async (reservation) => {
+        reservationsData.map(async (reservation) => {
           try {
-            const { data: roomData } = await supabase
+            const { data: roomData, error: roomError } = await supabase
               .from("rooms")
               .select("name")
               .eq("id", reservation.room_id)
               .single()
+
+            if (roomError) {
+              console.warn(`Error fetching room name for room ${reservation.room_id}:`, roomError)
+              return {
+                ...reservation,
+                room_name: `Room ${reservation.room_id}`,
+              }
+            }
 
             return {
               ...reservation,
               room_name: roomData?.name || `Room ${reservation.room_id}`,
             }
           } catch (error) {
-            console.error("Error fetching room name:", error)
+            console.error("Error in room name fetch:", error)
             return {
               ...reservation,
               room_name: `Room ${reservation.room_id}`,
@@ -153,64 +214,104 @@ export default function MyReservationsPage() {
         }),
       )
 
+      console.log("Reservations with room names:", reservationsWithRoomNames)
       setReservations(reservationsWithRoomNames)
     } catch (error: any) {
       console.error("Error fetching reservations:", error)
       setError(error.message || "Failed to load your reservations")
+      setDebugInfo({ type: "general_error", error })
+
+      // Check if it's an auth error
+      if (
+        error?.message?.includes("refresh_token_not_found") ||
+        error?.code === "refresh_token_not_found" ||
+        error?.__isAuthError
+      ) {
+        console.log("Auth error detected, redirecting to login")
+        try {
+          await supabase.auth.signOut()
+        } catch (e) {
+          console.error("Failed to sign out after auth error:", e)
+        }
+
+        router.push("/login")
+      }
     } finally {
       setLoading(false)
+      setCheckingAuth(false)
     }
   }
 
   // Format date for display
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
+    try {
+      // Parse the date string directly without timezone conversion
+      // Format: YYYY-MM-DD
+      const [year, month, day] = dateString.split("-").map((num) => Number.parseInt(num, 10))
+
+      // Create date with local timezone (month is 0-indexed in JS Date)
+      const date = new Date(year, month - 1, day)
+
+      return date.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    } catch (e) {
+      console.error("Date formatting error:", e, dateString)
+      return dateString
+    }
   }
 
   // Format time for display
   const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(":")
-    const hour = Number.parseInt(hours)
-    const period = hour >= 12 ? "PM" : "AM"
-    const formattedHour = hour % 12 === 0 ? 12 : hour % 12
-    return `${formattedHour}:${minutes} ${period}`
+    try {
+      const [hours, minutes] = timeString.split(":")
+      const hour = Number.parseInt(hours)
+      const period = hour >= 12 ? "PM" : "AM"
+      const formattedHour = hour % 12 === 0 ? 12 : hour % 12
+      return `${formattedHour}:${minutes} ${period}`
+    } catch (e) {
+      console.error("Time formatting error:", e)
+      return timeString
+    }
   }
 
   // Format time slots for display
   const formatTimeSlots = (timeSlots: { start_time: string; end_time: string }[]) => {
     if (!timeSlots.length) return "N/A"
 
-    // If there's only one time slot, just show start and end time
-    if (timeSlots.length === 1) {
-      return `${formatTime(timeSlots[0].start_time)} - ${formatTime(timeSlots[0].end_time)}`
-    }
-
-    // For consecutive time slots, find the earliest start time and latest end time
-    const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time))
-
-    // Check if slots are consecutive
-    let isConsecutive = true
-    for (let i = 0; i < sortedSlots.length - 1; i++) {
-      const currentEndHour = Number.parseInt(sortedSlots[i].end_time.split(":")[0])
-      const nextStartHour = Number.parseInt(sortedSlots[i + 1].start_time.split(":")[0])
-      if (currentEndHour !== nextStartHour) {
-        isConsecutive = false
-        break
+    try {
+      // If there's only one time slot, just show start and end time
+      if (timeSlots.length === 1) {
+        return `${formatTime(timeSlots[0].start_time)} - ${formatTime(timeSlots[0].end_time)}`
       }
-    }
 
-    if (isConsecutive) {
-      // If consecutive, show as a range
-      return `${formatTime(sortedSlots[0].start_time)} - ${formatTime(sortedSlots[sortedSlots.length - 1].end_time)}`
-    } else {
-      // If not consecutive, list all slots
-      return sortedSlots.map((slot) => `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`).join(", ")
+      // For consecutive time slots, find the earliest start time and latest end time
+      const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+      // Check if slots are consecutive
+      let isConsecutive = true
+      for (let i = 0; i < sortedSlots.length - 1; i++) {
+        const currentEndHour = Number.parseInt(sortedSlots[i].end_time.split(":")[0])
+        const nextStartHour = Number.parseInt(sortedSlots[i + 1].start_time.split(":")[0])
+        if (currentEndHour !== nextStartHour) {
+          isConsecutive = false
+          break
+        }
+      }
+
+      if (isConsecutive) {
+        // If consecutive, show as a range
+        return `${formatTime(sortedSlots[0].start_time)} - ${formatTime(sortedSlots[sortedSlots.length - 1].end_time)}`
+      } else {
+        // If not consecutive, list all slots
+        return sortedSlots.map((slot) => `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`).join(", ")
+      }
+    } catch (e) {
+      console.error("Time slot formatting error:", e)
+      return "Error formatting time slots"
     }
   }
 
@@ -228,12 +329,17 @@ export default function MyReservationsPage() {
   })
 
   const handleViewDetails = (reservation: GroupedReservation) => {
-    // Navigate to summary page with reservation details
+    // Set navigation flag before navigating
+    localStorage.setItem("navigationInProgress", "true")
+    localStorage.setItem("lastNavigationTimestamp", Date.now().toString())
+
+    // Navigate to details page with reservation details
     const params = new URLSearchParams()
     params.set("bookingName", reservation.booking_name)
     params.set("roomId", reservation.room_id.toString())
     params.set("roomName", reservation.room_name || `Room ${reservation.room_id}`)
     params.set("date", reservation.date)
+    params.set("status", reservation.status)
 
     // Create time slots array from start and end times
     const timeSlots = reservation.time_slots.map((slot) => {
@@ -246,7 +352,31 @@ export default function MyReservationsPage() {
     params.set("timeSlots", JSON.stringify(timeSlots))
     params.set("confirmationNumber", reservation.confirmation_number)
 
-    router.push(`/summary?${params.toString()}`)
+    router.push(`/reservation-details?${params.toString()}`)
+  }
+
+  const handleRetry = () => {
+    fetchReservations()
+  }
+
+  const handleBackToHome = () => {
+    // Set navigation flag before navigating
+    localStorage.setItem("navigationInProgress", "true")
+    localStorage.setItem("lastNavigationTimestamp", Date.now().toString())
+
+    // Navigate to home
+    window.location.href = "/"
+  }
+
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white mb-4" />
+          <p className="text-white">Checking authentication status...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -254,13 +384,13 @@ export default function MyReservationsPage() {
       {/* Header */}
       <div className="p-4 border-b border-[#8B1F2D]/30 flex justify-between items-center">
         <div className="flex items-center">
-          <Button variant="ghost" className="text-white hover:bg-white/10 mr-2 -ml-2" onClick={() => router.push("/")}>
+          <Button variant="ghost" className="text-white hover:bg-white/10 mr-2 -ml-2" onClick={handleBackToHome}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Home
           </Button>
         </div>
         <h1 className="text-xl font-semibold text-center flex-1">
-          <span className="text-[#D4AF37]">INTANIA</span> MY RESERVATIONS
+          <span className="text-[#D4AF37]">My</span> Reservation
         </h1>
         <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
       </div>
@@ -303,9 +433,23 @@ export default function MyReservationsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
               </div>
             ) : error ? (
-              <div className="bg-red-100 border-l-4 border-red-500 p-4 flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-red-700">{error}</p>
+              <div className="bg-red-100 border-l-4 border-red-500 p-4 flex flex-col gap-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-red-700">{error}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="self-start border-red-500 text-red-700 hover:bg-red-50"
+                  onClick={handleRetry}
+                >
+                  Retry
+                </Button>
+                {debugInfo && (
+                  <div className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-700 font-mono overflow-auto">
+                    <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+                  </div>
+                )}
               </div>
             ) : filteredReservations.length === 0 ? (
               <div className="text-center py-12">
@@ -320,7 +464,7 @@ export default function MyReservationsPage() {
                 </p>
                 <Button
                   className="bg-[#5A0D16] hover:bg-[#4A0B12] text-white shadow-md transition-all hover:shadow-lg"
-                  onClick={() => router.push("/")}
+                  onClick={handleBackToHome}
                 >
                   Make a Reservation
                 </Button>

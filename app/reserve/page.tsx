@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import BookingNameModal from "@/components/booking-name-modal"
 import { AlertCircle, Loader2, ArrowLeft } from "lucide-react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 // Type for time slot data
 interface TimeSlot {
@@ -70,11 +69,8 @@ export default function ReservePage() {
 
   const initialLoadComplete = useRef(false)
 
-  // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  // Initialize Supabase client using the singleton pattern
+  const supabase = getSupabaseClient()
 
   // Get current user
   const getCurrentUser = useCallback(async () => {
@@ -108,7 +104,12 @@ export default function ReservePage() {
     // Only update state if values have changed
     if (roomParam && roomParam !== roomId) setRoomId(roomParam)
     if (roomNameParam && roomNameParam !== roomName) setRoomName(roomNameParam)
-    if (dateParam && dateParam !== date) setDate(dateParam)
+    const dateParamFromParams = searchParams.get("date")
+    if (dateParamFromParams && dateParamFromParams !== date) {
+      // Ensure we're using the date string directly without timezone conversion
+      setDate(dateParamFromParams)
+      console.log("Date set from params:", dateParamFromParams)
+    }
 
     // Reset selection state
     setSelectedSlots([])
@@ -140,6 +141,15 @@ export default function ReservePage() {
   // Initialize component
   useEffect(() => {
     if (!initialLoadComplete.current) {
+      // Check if we're coming from a navigation
+      const navigationInProgress = localStorage.getItem("navigationInProgress")
+      if (navigationInProgress) {
+        // Clear the flag
+        localStorage.removeItem("navigationInProgress")
+        localStorage.removeItem("lastNavigationTimestamp")
+        console.log("Navigation in progress detected, skipping initial loading state")
+      }
+
       getCurrentUser()
       loadDataFromParams()
       initialLoadComplete.current = true
@@ -150,13 +160,20 @@ export default function ReservePage() {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Select a date"
 
-    const date = new Date(dateString)
+    // Create a date object and ensure it's interpreted in UTC to avoid timezone issues
+    const date = new Date(dateString + "T00:00:00Z")
+
+    // Add a day to fix the date issue
+    date.setDate(date.getDate() + 1)
+
     return (
       date.toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
-      }) + getOrdinalSuffix(date.getDate())
+      }) +
+      " " +
+      getOrdinalSuffix(date.getDate())
     )
   }
 
@@ -254,7 +271,7 @@ export default function ReservePage() {
             booking_name: bookingName,
             room_id: Number.parseInt(roomId),
             user_id: userId,
-            date: date,
+            date: date, // This should be the YYYY-MM-DD string from the URL params
             start_time: startTime,
             end_time: endTime,
             status: "Pending",

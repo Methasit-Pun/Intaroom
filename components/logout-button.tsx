@@ -6,6 +6,8 @@ import { LogOut, Loader2 } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+// Import the utility function
+import { handleLogout as handleLogoutUtil } from "@/lib/auth-utils"
 
 interface LogoutButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
@@ -27,20 +29,11 @@ export default function LogoutButton({
     supabaseKey: supabaseAnonKey,
   })
 
+  // Replace the handleLogout function with:
   const handleLogout = async () => {
     setLoading(true)
     try {
-      // Clear admin-related localStorage items
-      localStorage.removeItem("isAdmin")
-      localStorage.removeItem("adminEmail")
-
-      // Clear admin cookie
-      document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
-
-      // Sign out from Supabase (for regular users)
-      await supabase.auth.signOut()
-
-      router.push("/login")
+      await handleLogoutUtil(supabase, router)
     } catch (error) {
       console.error("Error signing out:", error)
     } finally {
@@ -49,16 +42,16 @@ export default function LogoutButton({
   }
 
   return (
-    <Button variant={variant} className={className} onClick={handleLogout} disabled={loading} title="Logout">
+    <Button variant={variant} className={className} onClick={handleLogout} disabled={loading}>
       {loading ? (
         <>
-          <Loader2 className="h-4 w-4 md:mr-2" />
-          <span className={showTextOnMobile ? "" : "hidden md:inline"}>Logging out...</span>
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          <span className={showTextOnMobile ? "" : "hidden sm:inline"}>Logging out...</span>
         </>
       ) : (
         <>
-          <LogOut className="h-4 w-4 md:mr-2" />
-          <span className={showTextOnMobile ? "" : "hidden md:inline"}>Logout</span>
+          <LogOut className="h-4 w-4 mr-2 sm:mr-2" />
+          <span className={showTextOnMobile ? "" : "hidden sm:inline"}>Logout</span>
         </>
       )}
     </Button>

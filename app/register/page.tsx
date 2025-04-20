@@ -7,20 +7,16 @@ import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
-import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
 
 export default function RegisterPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
-  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [fullName, setFullName] = useState("")
+  const [username, setUsername] = useState("")
   const [loading, setLoading] = useState(false)
-  const [checkingUsername, setCheckingUsername] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [usernameError, setUsernameError] = useState<string | null>(null)
-  const [usernameAvailable, setUsernameAvailable] = useState(false)
 
   // Initialize Supabase client with explicit URL and key
   const supabase = createClientComponentClient({
@@ -34,51 +30,6 @@ export default function RegisterPage() {
       return "Please use your Chulalongkorn University email (@chula.ac.th)"
     }
     return null
-  }
-
-  const validateUsername = (username: string) => {
-    // Username validation rules
-    if (username.length < 3) {
-      return "Username must be at least 3 characters long"
-    }
-    if (username.length > 20) {
-      return "Username must be less than 20 characters long"
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return "Username can only contain letters, numbers, and underscores"
-    }
-    return null
-  }
-
-  const checkUsernameAvailability = async (username: string) => {
-    if (!username || username.length < 3) return
-
-    const validationError = validateUsername(username)
-    if (validationError) {
-      setUsernameError(validationError)
-      setUsernameAvailable(false)
-      return
-    }
-
-    setCheckingUsername(true)
-    setUsernameError(null)
-    setUsernameAvailable(false)
-
-    try {
-      // Check if username exists in profiles table
-      const { data, error } = await supabase.from("profiles").select("username").eq("username", username).single()
-
-      if (error && error.code === "PGRST116") {
-        // Error code PGRST116 means no rows returned, which means username is available
-        setUsernameAvailable(true)
-      } else {
-        setUsernameError("Username is already taken")
-      }
-    } catch (error) {
-      console.error("Error checking username:", error)
-    } finally {
-      setCheckingUsername(false)
-    }
   }
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -98,17 +49,24 @@ export default function RegisterPage() {
       return
     }
 
-    // Validate username
-    const usernameValidationError = validateUsername(username)
-    if (usernameValidationError) {
-      setError(usernameValidationError)
-      return
-    }
+    // Check if username already exists
+    try {
+      const { data: existingUser, error: usernameCheckError } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", username)
+        .single()
 
-    // Check if username is available
-    if (!usernameAvailable) {
-      setError("Please check if your username is available")
-      return
+      if (existingUser) {
+        setError("Username already exists. Please choose a different username.")
+        return
+      }
+    } catch (error) {
+      // If error is not found, that's good - username is available
+      // Otherwise, log the error but continue (we'll catch other errors later)
+      if (error instanceof Error && !error.message.includes("No rows found")) {
+        console.error("Username check error:", error)
+      }
     }
 
     setLoading(true)
@@ -122,7 +80,7 @@ export default function RegisterPage() {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
-            username: username,
+            username: username, // Store username in auth metadata
           },
         },
       })
@@ -137,9 +95,9 @@ export default function RegisterPage() {
           {
             id: data.user.id,
             full_name: fullName,
+            username: username, // Now we can include username
             role: "user", // Always set to "user"
             email: email,
-            username: username,
           },
         ])
 
@@ -163,8 +121,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
-      <div className="w-full max-w-md p-6 rounded-3xl bg-[#6D3B3B]">
+    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] px-4">
+      <div className="w-full max-w-sm p-6 rounded-3xl bg-[#6D3B3B]">
         <h1 className="text-2xl font-semibold text-white text-center mb-6">Register</h1>
 
         {error && (
@@ -185,45 +143,15 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value)
-                    setUsernameError(null)
-                    setUsernameAvailable(false)
-                  }}
-                  onBlur={() => checkUsernameAvailability(username)}
-                  className={`w-full px-4 py-3 rounded-full bg-transparent border ${
-                    usernameError ? "border-red-400" : usernameAvailable ? "border-green-400" : "border-white/30"
-                  } text-white placeholder:text-white/70 focus:outline-none focus:border-white/50`}
-                  required
-                />
-                {checkingUsername && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="h-4 w-4 animate-spin text-white/70" />
-                  </div>
-                )}
-                {usernameAvailable && !checkingUsername && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <CheckCircle className="h-4 w-4 text-green-400" />
-                  </div>
-                )}
-                {usernameError && !checkingUsername && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <AlertCircle className="h-4 w-4 text-red-400" />
-                  </div>
-                )}
-              </div>
-              {usernameError && <p className="text-xs text-red-300 mt-1 ml-2">{usernameError}</p>}
-              {usernameAvailable && <p className="text-xs text-green-300 mt-1 ml-2">Username is available</p>}
-              {!usernameError && !usernameAvailable && (
-                <p className="text-xs text-white/70 mt-1 ml-2">
-                  Username can only contain letters, numbers, and underscores
-                </p>
-              )}
+              <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                required
+              />
+              <p className="text-xs text-white/70 mt-1 ml-2">This will be used to log in to your account</p>
             </div>
 
             <div>
@@ -262,17 +190,10 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={loading || checkingUsername}
+              disabled={loading}
               className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="inline mr-2 h-5 w-5 animate-spin" />
-                  Registering...
-                </>
-              ) : (
-                "Register"
-              )}
+              {loading ? "Registering..." : "Register"}
             </button>
           </div>
         </form>

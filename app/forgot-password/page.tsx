@@ -6,10 +6,9 @@ import { useState } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
-import { Loader2 } from "lucide-react"
 
 export default function ForgotPasswordPage() {
-  const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -26,20 +25,6 @@ export default function ForgotPasswordPage() {
     setLoading(true)
 
     try {
-      // First, get the email associated with the username
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("username", username)
-        .single()
-
-      if (profileError) {
-        throw new Error("Username not found. Please check your username.")
-      }
-
-      const email = profileData.email
-
-      // Now use the email to reset password
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       })
@@ -83,16 +68,13 @@ export default function ForgotPasswordPage() {
             <div className="space-y-4">
               <div>
                 <input
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                   required
                 />
-                <p className="text-xs text-white/70 mt-1 ml-2">
-                  Enter your username and we'll send a password reset link to your email
-                </p>
               </div>
 
               <button
@@ -100,14 +82,7 @@ export default function ForgotPasswordPage() {
                 disabled={loading}
                 className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors"
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="inline mr-2 h-5 w-5 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  "Reset Password"
-                )}
+                {loading ? "Sending..." : "Reset Password"}
               </button>
             </div>
           </form>

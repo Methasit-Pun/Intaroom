@@ -8,14 +8,9 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code")
 
   if (code) {
-    try {
-      const cookieStore = cookies()
-      const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
-      await supabase.auth.exchangeCodeForSession(code)
-    } catch (error) {
-      console.error("Error exchanging code for session:", error)
-      // Continue with the flow even if there's an error
-    }
+    const cookieStore = cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    await supabase.auth.exchangeCodeForSession(code)
   }
 
   // URL to redirect to after sign in process completes
