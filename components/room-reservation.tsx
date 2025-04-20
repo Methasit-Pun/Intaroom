@@ -247,11 +247,16 @@ export default function RoomReservation() {
         </h1>
         {isLoggedIn && (
           <div className="flex gap-2">
-            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
-              <User className="h-4 w-4 mr-2" />
-              My Reservations
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/10"
+              onClick={handleMyReservations}
+              title="My Reservations"
+            >
+              <User className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">My Reservations</span>
             </Button>
-            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
+            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" showTextOnMobile={false} />
           </div>
         )}
       </div>

@@ -10,9 +10,14 @@ import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 interface LogoutButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
   className?: string
+  showTextOnMobile?: boolean
 }
 
-export default function LogoutButton({ variant = "outline", className = "" }: LogoutButtonProps) {
+export default function LogoutButton({
+  variant = "outline",
+  className = "",
+  showTextOnMobile = true,
+}: LogoutButtonProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -44,16 +49,16 @@ export default function LogoutButton({ variant = "outline", className = "" }: Lo
   }
 
   return (
-    <Button variant={variant} className={className} onClick={handleLogout} disabled={loading}>
+    <Button variant={variant} className={className} onClick={handleLogout} disabled={loading} title="Logout">
       {loading ? (
         <>
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          Logging out...
+          <Loader2 className="h-4 w-4 md:mr-2" />
+          <span className={showTextOnMobile ? "" : "hidden md:inline"}>Logging out...</span>
         </>
       ) : (
         <>
-          <LogOut className="h-4 w-4 mr-2" />
-          Logout
+          <LogOut className="h-4 w-4 md:mr-2" />
+          <span className={showTextOnMobile ? "" : "hidden md:inline"}>Logout</span>
         </>
       )}
     </Button>
