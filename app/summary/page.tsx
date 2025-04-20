@@ -21,11 +21,10 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { Checkbox } from "@/components/ui/checkbox"
 import RulesPoliciesModal from "@/components/rules-policies-modal"
-
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient } from "@/lib/supabase-client"
 
 export default function SummaryPage() {
   const router = useRouter()
@@ -50,14 +49,10 @@ export default function SummaryPage() {
   })
 
   // Initialize Supabase client
-  // Replace this line:
-  // const supabase = createClientComponentClient({
-  //   supabaseUrl,
-  //   supabaseKey: supabaseAnonKey,
-  // })
-
-  // With this:
-  const supabase = getSupabaseClient()
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   useEffect(() => {
     const loadData = async () => {
@@ -123,24 +118,13 @@ export default function SummaryPage() {
   const formatDate = (dateString: string) => {
     if (!dateString) return ""
 
-    try {
-      // Parse the date string directly without timezone conversion
-      // Format: YYYY-MM-DD
-      const [year, month, day] = dateString.split("-").map((num) => Number.parseInt(num, 10))
-
-      // Create date with local timezone (month is 0-indexed in JS Date)
-      const date = new Date(year, month - 1, day)
-
-      return date.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    } catch (error) {
-      console.error("Error formatting date:", error, dateString)
-      return dateString
-    }
+    const date = new Date(dateString)
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
   }
 
   // Calculate duration from time slots
@@ -202,37 +186,14 @@ export default function SummaryPage() {
     setError(null)
 
     try {
-      // Extract the base confirmation number (before any dash)
-      const baseConfirmationNumber = bookingData.confirmationNumber.split("-")[0]
-
-      // Find all reservations with this base confirmation number and date
-      const { data: reservationsToDelete, error: fetchError } = await supabase
+      // Delete the reservation from Supabase
+      const { error } = await supabase
         .from("reservations")
-        .select("id, confirmation_number")
-        .like("confirmation_number", `${baseConfirmationNumber}%`)
-        .eq("date", bookingData.date)
+        .delete()
+        .eq("confirmation_number", bookingData.confirmationNumber)
 
-      if (fetchError) throw fetchError
+      if (error) throw error
 
-      if (!reservationsToDelete || reservationsToDelete.length === 0) {
-        throw new Error("No reservations found to cancel")
-      }
-
-      console.log(
-        `Found ${reservationsToDelete.length} reservations to delete with base confirmation ${baseConfirmationNumber}`,
-      )
-
-      // Delete each reservation individually
-      for (const reservation of reservationsToDelete) {
-        const { error: deleteError } = await supabase.from("reservations").delete().eq("id", reservation.id)
-
-        if (deleteError) {
-          console.error(`Error deleting reservation ${reservation.id}:`, deleteError)
-          throw deleteError
-        }
-      }
-
-      // Navigate back to home page after successful deletion
       router.push("/")
     } catch (error: any) {
       console.error("Error canceling reservation:", error)

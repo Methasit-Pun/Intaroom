@@ -2,21 +2,9 @@ import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-// Update the middleware function to prevent redirect loops
+// Update the middleware to handle auth errors better
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-
-  // Log the current path for debugging
-  console.log(`Middleware processing path: ${req.nextUrl.pathname}`)
-
-  // Check for potential redirect loops
-  const redirectCount = Number.parseInt(req.cookies.get("redirectCount")?.value || "0")
-  if (redirectCount > 3) {
-    console.error("Detected potential redirect loop, allowing request to proceed")
-    const resetRes = NextResponse.next()
-    resetRes.cookies.set("redirectCount", "0")
-    return resetRes
-  }
 
   // Create supabase client with cookies
   const supabase = createMiddlewareClient({ req, res })
@@ -29,102 +17,74 @@ export async function middleware(req: NextRequest) {
 
   // If this is an admin route and we have the admin cookie, allow access immediately
   if (isAdminRoute && adminCookie) {
-    console.log("Admin route with admin cookie - allowing access")
     return res
   }
-
-  // Define auth routes that don't require authentication
-  const isAuthRoute =
-    req.nextUrl.pathname.startsWith("/login") ||
-    req.nextUrl.pathname.startsWith("/register") ||
-    req.nextUrl.pathname.startsWith("/forgot-password") ||
-    req.nextUrl.pathname.startsWith("/auth") ||
-    req.nextUrl.pathname.startsWith("/register-success") ||
-    req.nextUrl.pathname.startsWith("/reset-password")
-
-  // Special case for root path - always allow access
-  const isRootPath = req.nextUrl.pathname === "/"
 
   // For non-admin routes or if no admin cookie, proceed with normal auth checks
   try {
     const {
       data: { session },
-      error,
     } = await supabase.auth.getSession()
 
-    // Handle auth errors
-    if (error) {
-      console.error("Auth error in middleware:", error)
-
-      // If it's a refresh token error and not on an auth route, redirect to login
-      if (
-        (error.message?.includes("refresh_token_not_found") || (error as any)?.code === "refresh_token_not_found") &&
-        !isAuthRoute
-      ) {
-        console.log("Refresh token error, redirecting to login")
-        const redirectUrl = req.nextUrl.clone()
-        redirectUrl.pathname = "/login"
-        const redirectRes = NextResponse.redirect(redirectUrl)
-        redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
-        return redirectRes
-      }
-    }
-
-    console.log(`Session check result: ${!!session}`)
+    // Define auth routes that don't require authentication
+    const isAuthRoute =
+      req.nextUrl.pathname.startsWith("/login") ||
+      req.nextUrl.pathname.startsWith("/register") ||
+      req.nextUrl.pathname.startsWith("/forgot-password") ||
+      req.nextUrl.pathname.startsWith("/auth") ||
+      req.nextUrl.pathname.startsWith("/register-success") ||
+      req.nextUrl.pathname.startsWith("/reset-password")
 
     // If trying to access admin route without admin cookie or session, redirect to login
     if (isAdminRoute && !session && !adminCookie) {
-      console.log("Admin route without auth - redirecting to login")
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
-      const redirectRes = NextResponse.redirect(redirectUrl)
-      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
-      return redirectRes
+      return NextResponse.redirect(redirectUrl)
     }
 
     // If no session and trying to access protected routes, redirect to login
-    // But allow access to the root path regardless of auth status
-    if (!session && !isAuthRoute && !adminCookie && !isRootPath) {
-      console.log("Protected route without auth - redirecting to login")
+    if (!session && !isAuthRoute && !adminCookie) {
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
       redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
-      const redirectRes = NextResponse.redirect(redirectUrl)
-      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
-      return redirectRes
+      return NextResponse.redirect(redirectUrl)
     }
 
     // If session exists and trying to access auth routes, redirect appropriately
     if ((session || adminCookie) && isAuthRoute) {
-      console.log("Auth route with session - redirecting to appropriate page")
       const redirectUrl = req.nextUrl.clone()
 
       if (adminCookie) {
         redirectUrl.pathname = "/admin"
       } else {
-        // Redirect regular users to the root path
         redirectUrl.pathname = "/"
       }
 
-      const redirectRes = NextResponse.redirect(redirectUrl)
-      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
-      return redirectRes
+      return NextResponse.redirect(redirectUrl)
     }
   } catch (error) {
-    console.error("Exception in middleware:", error)
+    // Handle auth errors gracefully - if there's an error with the session,
+    // we'll treat it as if there's no session
+    console.error("Auth error in middleware:", error)
 
-    // If there's an exception and not on an auth route, redirect to login
-    if (!isAuthRoute && !isRootPath) {
+    // Define auth routes that don't require authentication
+    const isAuthRoute =
+      req.nextUrl.pathname.startsWith("/login") ||
+      req.nextUrl.pathname.startsWith("/register") ||
+      req.nextUrl.pathname.startsWith("/forgot-password") ||
+      req.nextUrl.pathname.startsWith("/auth") ||
+      req.nextUrl.pathname.startsWith("/register-success") ||
+      req.nextUrl.pathname.startsWith("/reset-password")
+
+    // If not an auth route and not the home page, redirect to login
+    if (!isAuthRoute && req.nextUrl.pathname !== "/") {
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
-      const redirectRes = NextResponse.redirect(redirectUrl)
-      redirectRes.cookies.set("redirectCount", (redirectCount + 1).toString())
-      return redirectRes
+      redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
     }
   }
 
-  // Reset redirect count for successful requests
-  res.cookies.set("redirectCount", "0")
   return res
 }
 
