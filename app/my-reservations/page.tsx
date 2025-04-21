@@ -186,11 +186,12 @@ export default function MyReservationsPage() {
       const reservationsWithRoomNames = await Promise.all(
         reservationsData.map(async (reservation) => {
           try {
-            const { data: roomData, error: roomError } = await supabase
+            // Modified query: Don't use .single() and handle the case where no room is found
+            const { data: roomsData, error: roomError } = await supabase
               .from("rooms")
               .select("name")
               .eq("id", reservation.room_id)
-              .single()
+              .limit(1)
 
             if (roomError) {
               console.warn(`Error fetching room name for room ${reservation.room_id}:`, roomError)
@@ -200,9 +201,18 @@ export default function MyReservationsPage() {
               }
             }
 
+            // Check if any room data was returned
+            if (!roomsData || roomsData.length === 0) {
+              console.warn(`No room found with id ${reservation.room_id}`)
+              return {
+                ...reservation,
+                room_name: `Room ${reservation.room_id}`,
+              }
+            }
+
             return {
               ...reservation,
-              room_name: roomData?.name || `Room ${reservation.room_id}`,
+              room_name: roomsData[0]?.name || `Room ${reservation.room_id}`,
             }
           } catch (error) {
             console.error("Error in room name fetch:", error)
