@@ -96,36 +96,23 @@ export default function RoomReservation() {
   // Add a ref to track navigation state
   const isNavigating = useRef(false)
 
-  // Check if user is logged in
+  // Add a ref to track if we've already fetched reservations
+  const hasLoadedReservations = useRef(false)
+
+  // Check if user is logged in - simplified to reduce unnecessary checks
   useEffect(() => {
     const checkAuth = async () => {
       try {
         setCheckingAuth(true)
 
-        // Check if we're coming from a navigation
-        const navigationInProgress = localStorage.getItem("navigationInProgress")
-        if (navigationInProgress) {
-          // Clear the flag
-          localStorage.removeItem("navigationInProgress")
-
-          // Get the timestamp to prevent stale navigation states
-          const lastNavTimestamp = localStorage.getItem("lastNavigationTimestamp")
-          const currentTime = Date.now()
-
-          // Only skip auth check if navigation was recent (within last 10 seconds)
-          if (lastNavTimestamp && currentTime - Number.parseInt(lastNavTimestamp) < 10000) {
-            console.log("Recent navigation detected, skipping initial auth check")
+        // First check localStorage for faster response
+        if (typeof window !== "undefined") {
+          if (localStorage.getItem("isAdmin") === "true" || localStorage.getItem("userLoggedIn") === "true") {
+            console.log("User authenticated via localStorage")
             setIsLoggedIn(true)
             setCheckingAuth(false)
             return
           }
-        }
-
-        // Check if user is logged in via localStorage (for admin)
-        if (localStorage.getItem("isAdmin") === "true") {
-          setIsLoggedIn(true)
-          setCheckingAuth(false)
-          return
         }
 
         // Check if user is logged in via Supabase
@@ -141,11 +128,6 @@ export default function RoomReservation() {
           }
         } catch (authError) {
           console.error("Auth check failed:", authError)
-
-          // Handle refresh token errors
-          const supabase = getSupabaseClient()
-          await supabase.auth.signOut()
-
           setIsLoggedIn(false)
           router.push("/login")
         }
@@ -160,14 +142,22 @@ export default function RoomReservation() {
     checkAuth()
   }, [router])
 
-  // Fetch reservations when date or room changes
+  // Fetch reservations when date or room changes - with optimization
   useEffect(() => {
-    if (!checkingAuth && isLoggedIn) {
+    if (!checkingAuth && isLoggedIn && !hasLoadedReservations.current) {
       fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+      hasLoadedReservations.current = true
     }
   }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth])
 
-  // Function to fetch reservations
+  // Add a separate effect for when date or room changes after initial load
+  useEffect(() => {
+    if (hasLoadedReservations.current && !checkingAuth && isLoggedIn) {
+      fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+    }
+  }, [selectedDate, currentRoomIndex])
+
+  // Function to fetch reservations - optimized to reduce unnecessary auth checks
   const fetchReservations = async (roomId: number, date: Date) => {
     if (!roomId) return
 
@@ -176,58 +166,27 @@ export default function RoomReservation() {
       const dateStr = date.toISOString().split("T")[0]
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
-      // Get a fresh Supabase client
+      // Get the Supabase client (should be already initialized)
       const supabase = getSupabaseClient()
 
-      try {
-        // Check if we have a valid session before fetching
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      // Direct query to reservations table only, avoiding profiles table
+      const { data, error, status } = await supabase
+        .from("reservations")
+        .select("booking_name, room_id, date, start_time, end_time, status")
+        .eq("room_id", roomId)
+        .eq("date", dateStr)
 
-        if (sessionError) {
-          console.error("Session error:", sessionError)
+      console.log(`Fetch response status: ${status}`)
 
-          // Handle refresh token errors
-          if (
-            sessionError.message?.includes("refresh_token_not_found") ||
-            (sessionError as any)?.code === "refresh_token_not_found"
-          ) {
-            await supabase.auth.signOut()
-            setIsLoggedIn(false)
-            router.push("/login")
-            return
-          }
-        }
-
-        console.log("Current session status:", {
-          hasSession: !!sessionData.session,
-          expiresAt: sessionData.session?.expires_at,
-        })
-
-        // Direct query to reservations table only, avoiding profiles table
-        const { data, error, status } = await supabase
-          .from("reservations")
-          .select("booking_name, room_id, date, start_time, end_time, status")
-          .eq("room_id", roomId)
-          .eq("date", dateStr)
-
-        console.log(`Fetch response status: ${status}`)
-
-        if (error) {
-          console.error("Error fetching reservations:", error)
-          // Use empty array instead of throwing error
-          setReservations([])
-          return
-        }
-
-        console.log(`Found ${data?.length || 0} reservations:`, data)
-        setReservations(data || [])
-      } catch (authError) {
-        console.error("Auth error during fetch:", authError)
-
-        // Handle auth errors
-        await handleAuthError(authError)
+      if (error) {
+        console.error("Error fetching reservations:", error)
+        // Use empty array instead of throwing error
         setReservations([])
+        return
       }
+
+      console.log(`Found ${data?.length || 0} reservations:`, data)
+      setReservations(data || [])
     } catch (error: any) {
       console.error("Error in fetchReservations:", error)
       setReservations([])
@@ -470,6 +429,15 @@ export default function RoomReservation() {
 
     // Handle other types of authentication errors as needed
     setError("Authentication error occurred. Please try again.")
+  }
+
+  const handleBackToHome = () => {
+    // Set navigation flag before navigating
+    localStorage.setItem("navigationInProgress", "true")
+    localStorage.setItem("lastNavigationTimestamp", Date.now().toString())
+
+    // Navigate to home instead of root
+    window.location.href = "/home"
   }
 
   return (

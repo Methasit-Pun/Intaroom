@@ -34,6 +34,12 @@ export default function LogoutButton({
     setLoading(true)
     try {
       await handleLogoutUtil(supabase, router)
+      // In the handleLogout function, update the redirect path:
+      if (router) {
+        router.push("/login")
+      } else if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      }
     } catch (error) {
       console.error("Error signing out:", error)
     } finally {

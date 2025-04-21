@@ -42,8 +42,31 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/register-success") ||
     req.nextUrl.pathname.startsWith("/reset-password")
 
-  // Special case for root path - always allow access
+  // Special case for root path - redirect to login or home based on auth status
   const isRootPath = req.nextUrl.pathname === "/"
+
+  // If at root path, redirect to appropriate page
+  if (isRootPath) {
+    // Check for admin cookie first
+    if (adminCookie) {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/admin"
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // Check for user login cookie
+    const userLoggedIn = req.cookies.get("userLoggedIn")?.value === "true"
+    if (userLoggedIn) {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/home"
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // If no auth cookies, redirect to login
+    const redirectUrl = req.nextUrl.clone()
+    redirectUrl.pathname = "/login"
+    return NextResponse.redirect(redirectUrl)
+  }
 
   // For non-admin routes or if no admin cookie, proceed with normal auth checks
   try {
@@ -83,7 +106,6 @@ export async function middleware(req: NextRequest) {
     }
 
     // If no session and trying to access protected routes, redirect to login
-    // But allow access to the root path regardless of auth status
     if (!session && !isAuthRoute && !adminCookie && !isRootPath) {
       console.log("Protected route without auth - redirecting to login")
       const redirectUrl = req.nextUrl.clone()
@@ -102,8 +124,8 @@ export async function middleware(req: NextRequest) {
       if (adminCookie) {
         redirectUrl.pathname = "/admin"
       } else {
-        // Redirect regular users to the root path
-        redirectUrl.pathname = "/"
+        // Redirect regular users to the home path instead of root
+        redirectUrl.pathname = "/home"
       }
 
       const redirectRes = NextResponse.redirect(redirectUrl)

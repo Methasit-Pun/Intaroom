@@ -1,5 +1,7 @@
 // Add a utility file to help with authentication
 
+import { setAuthState } from "./supabase-client"
+
 /**
  * Utility functions for authentication
  */
@@ -8,6 +10,11 @@
 export function isAuthenticated(): boolean {
   // Check for admin authentication
   if (typeof window !== "undefined" && localStorage.getItem("isAdmin") === "true") {
+    return true
+  }
+
+  // Check for user authentication
+  if (typeof window !== "undefined" && localStorage.getItem("userLoggedIn") === "true") {
     return true
   }
 
@@ -22,8 +29,8 @@ export function getPostLoginRedirect(): string {
     return "/admin"
   }
 
-  // For regular users, go to the main app
-  return "/"
+  // For regular users, go to the home page
+  return "/home"
 }
 
 // Function to handle logout
@@ -33,10 +40,15 @@ export async function handleLogout(supabase: any, router: any) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("isAdmin")
       localStorage.removeItem("adminEmail")
+      localStorage.removeItem("userLoggedIn")
     }
 
     // Clear admin cookie
     document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    document.cookie = "userLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+    // Update auth state
+    setAuthState(false, null)
 
     // Sign out from Supabase (for regular users)
     if (supabase) {

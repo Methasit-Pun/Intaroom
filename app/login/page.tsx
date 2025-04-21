@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { CheckCircle, Loader2 } from "lucide-react"
-import { resetSupabaseClient } from "@/lib/supabase-client"
+import { resetSupabaseClient, setAuthState } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -31,14 +31,10 @@ export default function LoginPage() {
   }, [searchParams])
 
   // Update the login page to handle authentication more robustly
-  // Add this function at the beginning of the LoginPage component
   useEffect(() => {
     const checkSession = async () => {
       try {
         setCheckingSession(true)
-
-        // Reset the Supabase client to ensure a fresh connection
-        const supabase = resetSupabaseClient()
 
         // Check if admin is already logged in via localStorage
         if (localStorage.getItem("isAdmin") === "true") {
@@ -47,8 +43,18 @@ export default function LoginPage() {
           return
         }
 
+        // Check if user is already logged in via localStorage
+        if (localStorage.getItem("userLoggedIn") === "true") {
+          console.log("User is already logged in, redirecting to /home")
+          window.location.href = "/home"
+          return
+        }
+
         // For regular users, check Supabase session
         try {
+          // Get a fresh Supabase client
+          const supabase = resetSupabaseClient()
+
           console.log("Checking for existing session...")
           const { data, error } = await supabase.auth.getSession()
 
@@ -62,6 +68,7 @@ export default function LoginPage() {
             ) {
               console.log("Refresh token error, signing out")
               await supabase.auth.signOut()
+              setAuthState(false)
             }
 
             setCheckingSession(false)
@@ -69,11 +76,14 @@ export default function LoginPage() {
           }
 
           if (data.session) {
-            console.log("User is already logged in, redirecting to /")
+            console.log("User is already logged in, redirecting to /home")
+            // Set auth state
+            setAuthState(true, data.session.user.id)
             // Use window.location for a hard redirect
-            window.location.href = "/"
+            window.location.href = "/home"
           } else {
             console.log("No active session found")
+            setAuthState(false)
             setCheckingSession(false)
           }
         } catch (error) {
@@ -82,7 +92,9 @@ export default function LoginPage() {
 
           // Try to sign out to clear any invalid session data
           try {
+            const supabase = resetSupabaseClient()
             await supabase.auth.signOut()
+            setAuthState(false)
           } catch (e) {
             console.error("Failed to sign out after error:", e)
           }
@@ -97,7 +109,6 @@ export default function LoginPage() {
   }, [])
 
   // Handle login with separate flows for admin and regular users
-  // Update the handleLogin function to use window.location for navigation
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -120,6 +131,9 @@ export default function LoginPage() {
 
           // Set a cookie for server-side checks (middleware)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
+
+          // Set auth state
+          setAuthState(true)
 
           // Redirect to admin page using window.location for reliability
           window.location.href = "/admin"
@@ -169,8 +183,11 @@ export default function LoginPage() {
           // Store a flag in localStorage to indicate successful login
           localStorage.setItem("userLoggedIn", "true")
 
+          // Set auth state
+          setAuthState(true, data.user.id)
+
           // Force a hard navigation to break any potential redirect loops
-          window.location.href = "/"
+          window.location.href = "/home"
           return
         }
       }

@@ -7,11 +7,28 @@ import type { Database } from "./database.types"
 // Store the client instance
 let supabaseClient: ReturnType<typeof createClientComponentClient<Database>> | null = null
 
+// Add a flag to track initialization status
+let isInitializing = false
+
+// Add a cache for authentication state
+const authCache: {
+  isAuthenticated: boolean | null
+  lastChecked: number
+  userId: string | null
+} = {
+  isAuthenticated: null,
+  lastChecked: 0,
+  userId: null,
+}
+
 // Function to get the Supabase client (singleton pattern)
 export function getSupabaseClient() {
-  if (!supabaseClient) {
+  if (!supabaseClient && !isInitializing) {
+    // Set initializing flag to prevent concurrent initialization
+    isInitializing = true
+
     // Add console logging to debug initialization
-    console.log("Initializing new Supabase client")
+    console.log("Initializing new Supabase client (should happen only once)")
 
     // Ensure we have the required values
     if (!supabaseUrl || !supabaseAnonKey) {
@@ -19,6 +36,7 @@ export function getSupabaseClient() {
         hasUrl: !!supabaseUrl,
         hasKey: !!supabaseAnonKey,
       })
+      isInitializing = false
       throw new Error("Database configuration is missing. Please contact support.")
     }
 
@@ -50,26 +68,53 @@ export function getSupabaseClient() {
       },
     })
 
-    // Test the connection
-    supabaseClient.auth.getSession().then(
-      () => console.log("Supabase client initialized successfully"),
-      (error) => console.error("Supabase initialization test failed:", error),
-    )
+    // Reset initializing flag
+    isInitializing = false
   }
+
   return supabaseClient
 }
 
 // Add a function to reset the client (useful for debugging)
 export function resetSupabaseClient() {
   supabaseClient = null
+  authCache.isAuthenticated = null
+  authCache.lastChecked = 0
+  authCache.userId = null
   return getSupabaseClient()
 }
 
-// Update the isUserAuthenticated function to handle refresh token errors better
+// Update the isUserAuthenticated function to use caching
 export async function isUserAuthenticated() {
   try {
+    // Check cache first (valid for 5 minutes)
+    const now = Date.now()
+    const cacheAge = now - authCache.lastChecked
+
+    if (authCache.isAuthenticated !== null && cacheAge < 5 * 60 * 1000) {
+      console.log("Using cached authentication state:", authCache.isAuthenticated)
+      return authCache.isAuthenticated
+    }
+
+    // If we have a localStorage flag for admin, use that
+    if (typeof window !== "undefined" && localStorage.getItem("isAdmin") === "true") {
+      console.log("Admin authentication from localStorage")
+      authCache.isAuthenticated = true
+      authCache.lastChecked = now
+      return true
+    }
+
+    // If we have a localStorage flag for user login, use that
+    if (typeof window !== "undefined" && localStorage.getItem("userLoggedIn") === "true") {
+      console.log("User authentication from localStorage")
+      authCache.isAuthenticated = true
+      authCache.lastChecked = now
+      return true
+    }
+
+    // Otherwise check with Supabase
     const supabase = getSupabaseClient()
-    console.log("Checking if user is authenticated...")
+    console.log("Checking if user is authenticated with Supabase...")
     const { data, error } = await supabase.auth.getSession()
 
     if (error) {
@@ -79,14 +124,25 @@ export async function isUserAuthenticated() {
       if (error.message?.includes("refresh_token_not_found") || (error as any)?.code === "refresh_token_not_found") {
         console.log("Refresh token not found, clearing session")
         await supabase.auth.signOut()
+        authCache.isAuthenticated = false
+        authCache.lastChecked = now
+        authCache.userId = null
         return false
       }
 
+      authCache.isAuthenticated = false
+      authCache.lastChecked = now
       return false
     }
 
     const isAuth = !!data.session
     console.log("Authentication check result:", isAuth)
+
+    // Update cache
+    authCache.isAuthenticated = isAuth
+    authCache.lastChecked = now
+    authCache.userId = data.session?.user?.id || null
+
     return isAuth
   } catch (error) {
     console.error("Exception checking authentication:", error)
@@ -98,6 +154,11 @@ export async function isUserAuthenticated() {
     } catch (e) {
       console.error("Failed to sign out after error:", e)
     }
+
+    // Update cache
+    authCache.isAuthenticated = false
+    authCache.lastChecked = Date.now()
+    authCache.userId = null
 
     return false
   }
@@ -125,10 +186,32 @@ export async function handleAuthError(error: any) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("supabase.auth.token")
       localStorage.removeItem("supabase.auth.expires_at")
+      localStorage.removeItem("userLoggedIn")
     }
+
+    // Update cache
+    authCache.isAuthenticated = false
+    authCache.lastChecked = Date.now()
+    authCache.userId = null
 
     return true // Error was handled
   }
 
   return false // Error wasn't handled
+}
+
+// Add a function to set authentication state directly (to avoid unnecessary checks)
+export function setAuthState(isAuthenticated: boolean, userId: string | null = null) {
+  authCache.isAuthenticated = isAuthenticated
+  authCache.lastChecked = Date.now()
+  authCache.userId = userId
+
+  // Also set localStorage flag for faster checks
+  if (typeof window !== "undefined") {
+    if (isAuthenticated) {
+      localStorage.setItem("userLoggedIn", "true")
+    } else {
+      localStorage.removeItem("userLoggedIn")
+    }
+  }
 }
