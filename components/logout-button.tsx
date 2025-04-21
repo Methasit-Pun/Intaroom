@@ -3,11 +3,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { LogOut, Loader2 } from "lucide-react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
-// Import the utility function
-import { handleLogout as handleLogoutUtil } from "@/lib/auth-utils"
+import { getSupabaseClient, clearAuthState } from "@/lib/supabase-client"
 
 interface LogoutButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
@@ -23,25 +20,29 @@ export default function LogoutButton({
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
-  // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
-
-  // Replace the handleLogout function with:
   const handleLogout = async () => {
     setLoading(true)
     try {
-      await handleLogoutUtil(supabase, router)
-      // In the handleLogout function, update the redirect path:
-      if (router) {
-        router.push("/login")
-      } else if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      }
+      // Get the Supabase client
+      const supabase = getSupabaseClient()
+
+      // Sign out from Supabase
+      await supabase.auth.signOut()
+
+      // Clear all auth state
+      clearAuthState()
+
+      // Clear cookies
+      document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+      document.cookie = "userLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+      // Redirect to login
+      window.location.href = "/login"
     } catch (error) {
       console.error("Error signing out:", error)
+
+      // Force redirect even if there's an error
+      window.location.href = "/login"
     } finally {
       setLoading(false)
     }

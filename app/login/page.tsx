@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { CheckCircle, Loader2 } from "lucide-react"
-import { resetSupabaseClient, setAuthState } from "@/lib/supabase-client"
+import { getSupabaseClient, setAuthState, isAuthenticatedFast } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -30,74 +30,37 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Update the login page to handle authentication more robustly
+  // Fast session check
   useEffect(() => {
     const checkSession = async () => {
       try {
-        setCheckingSession(true)
-
-        // Check if admin is already logged in via localStorage
-        if (localStorage.getItem("isAdmin") === "true") {
-          console.log("Admin is already logged in, redirecting to /admin")
-          window.location.href = "/admin"
-          return
-        }
-
-        // Check if user is already logged in via localStorage
-        if (localStorage.getItem("userLoggedIn") === "true") {
-          console.log("User is already logged in, redirecting to /home")
-          window.location.href = "/home"
-          return
-        }
-
-        // For regular users, check Supabase session
-        try {
-          // Get a fresh Supabase client
-          const supabase = resetSupabaseClient()
-
-          console.log("Checking for existing session...")
-          const { data, error } = await supabase.auth.getSession()
-
-          if (error) {
-            console.error("Session error during check:", error)
-
-            // If it's a refresh token error, sign out to clear invalid session data
-            if (
-              error.message?.includes("refresh_token_not_found") ||
-              (error as any)?.code === "refresh_token_not_found"
-            ) {
-              console.log("Refresh token error, signing out")
-              await supabase.auth.signOut()
-              setAuthState(false)
-            }
-
-            setCheckingSession(false)
-            return // Stay on login page
-          }
-
-          if (data.session) {
-            console.log("User is already logged in, redirecting to /home")
-            // Set auth state
-            setAuthState(true, data.session.user.id)
-            // Use window.location for a hard redirect
-            window.location.href = "/home"
+        // Fast check first - no API calls
+        if (isAuthenticatedFast()) {
+          // Redirect based on user type
+          if (localStorage.getItem("isAdmin") === "true") {
+            window.location.href = "/admin"
           } else {
-            console.log("No active session found")
-            setAuthState(false)
-            setCheckingSession(false)
+            window.location.href = "/home"
           }
-        } catch (error) {
-          console.error("Error checking session:", error)
-          setCheckingSession(false)
+          return
+        }
 
-          // Try to sign out to clear any invalid session data
-          try {
-            const supabase = resetSupabaseClient()
-            await supabase.auth.signOut()
-            setAuthState(false)
-          } catch (e) {
-            console.error("Failed to sign out after error:", e)
-          }
+        // If fast check fails, do a full check
+        const supabase = getSupabaseClient()
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error("Session error:", error)
+          setCheckingSession(false)
+          return
+        }
+
+        if (data.session) {
+          // Set auth state and redirect
+          setAuthState(true, data.session.user.id)
+          window.location.href = "/home"
+        } else {
+          setCheckingSession(false)
         }
       } catch (error) {
         console.error("Session check error:", error)
@@ -108,85 +71,64 @@ export default function LoginPage() {
     checkSession()
   }, [])
 
-  // Handle login with separate flows for admin and regular users
+  // Handle login with optimized flow
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
-    console.log("Login attempt started", { userType, username })
-
     try {
       if (userType === "admin") {
-        // Admin login - completely bypass Supabase auth
-        console.log("Attempting admin login")
-
-        // Check hardcoded admin credentials
+        // Admin login - bypass Supabase
         if (username === "admin1" && password === "admin123") {
-          console.log("Admin credentials valid, setting cookies and localStorage")
-
-          // Store admin status in localStorage
+          // Set admin status
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
 
-          // Set a cookie for server-side checks (middleware)
+          // Set cookie for server-side checks
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
-          // Set auth state
+          // Set auth state and redirect
           setAuthState(true)
-
-          // Redirect to admin page using window.location for reliability
           window.location.href = "/admin"
           return
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
-        // Regular user login - use Supabase authentication
-        console.log("Attempting regular user login with username:", username)
+        // Regular user login
+        const supabase = getSupabaseClient()
 
-        // Get a fresh Supabase client
-        const supabase = resetSupabaseClient()
-
-        // First, get the email associated with the username
+        // Get email from username
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("id, email")
           .eq("username", username)
           .single()
 
-        console.log("Profile lookup result:", { profileData, profileError })
-
         if (profileError || !profileData) {
           throw new Error("Username not found. Please check your username and try again.")
         }
 
-        // Now sign in with the email and password
-        console.log("Found email, attempting sign in with:", profileData.email)
+        // Sign in with email and password
         const { data, error } = await supabase.auth.signInWithPassword({
           email: profileData.email,
           password,
         })
 
-        console.log("Sign in result:", { success: !!data.user, error })
-
         if (error) throw error
 
         if (data.user) {
-          // Check if email is verified for user accounts
+          // Check email verification
           if (!data.user.email_confirmed_at) {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          console.log("Login successful, redirecting to home page")
-
-          // Store a flag in localStorage to indicate successful login
-          localStorage.setItem("userLoggedIn", "true")
-
           // Set auth state
+          localStorage.setItem("userLoggedIn", "true")
           setAuthState(true, data.user.id)
 
-          // Force a hard navigation to break any potential redirect loops
+          // Redirect to home
           window.location.href = "/home"
           return
         }
@@ -290,7 +232,6 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            {/* Updated login button with black text and font size 20 */}
             <button
               type="submit"
               disabled={loading}
