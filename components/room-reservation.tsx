@@ -101,7 +101,7 @@ export default function RoomReservation() {
 
   // Fast auth check
   useEffect(() => {
-    // Use fast auth check
+    // Use fast auth check from localStorage only
     const isAuth = isAuthenticatedFast()
     setIsLoggedIn(isAuth)
     setCheckingAuth(false)

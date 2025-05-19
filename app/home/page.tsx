@@ -1,10 +1,8 @@
 "use client"
 
-import { useState } from "react"
-
-import { useEffect } from "react"
+import { useState, useEffect } from "react"
 import RoomReservation from "@/components/room-reservation"
-import { isUserAuthenticated } from "@/lib/supabase-client"
+import { isAuthenticatedFast } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 
@@ -12,37 +10,19 @@ export default function HomePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
 
-  // Check authentication on page load - with reduced frequency
+  // Check authentication on page load - with simplified approach
   useEffect(() => {
-    // First check localStorage for faster response
-    if (typeof window !== "undefined") {
-      if (localStorage.getItem("isAdmin") === "true" || localStorage.getItem("userLoggedIn") === "true") {
-        console.log("User authenticated via localStorage")
-        setLoading(false)
-        return
-      }
+    // Fast check using localStorage only
+    const isAuth = isAuthenticatedFast()
+
+    if (!isAuth) {
+      console.log("User not authenticated, redirecting to login")
+      router.push("/login")
+      return
     }
 
-    // Only if localStorage check fails, do a full auth check
-    const checkAuth = async () => {
-      try {
-        const authenticated = await isUserAuthenticated()
-
-        if (!authenticated) {
-          // If not authenticated, redirect to login
-          console.log("User not authenticated, redirecting to login")
-          router.push("/login")
-          return
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error("Auth check error:", error)
-        router.push("/login")
-      }
-    }
-
-    checkAuth()
+    // User is authenticated, show the page
+    setLoading(false)
   }, [router])
 
   if (loading) {

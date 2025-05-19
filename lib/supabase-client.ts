@@ -7,9 +7,6 @@ import type { Database } from "./database.types"
 // Global variable to store the client instance
 let supabaseInstance: ReturnType<typeof createClientComponentClient<Database>> | null = null
 
-// Global variable to track initialization status
-let isInitializing = false
-
 // Auth state cache with expiration
 const authCache = {
   isAuthenticated: null as boolean | null,
@@ -28,26 +25,6 @@ export function getSupabaseClient() {
     return supabaseInstance
   }
 
-  // If we're already initializing, wait for it to complete
-  if (isInitializing) {
-    console.log("Supabase client initialization already in progress, waiting...")
-
-    // Return a temporary client that will be replaced on next call
-    // This is a workaround for concurrent initialization
-    return createClientComponentClient<Database>({
-      supabaseUrl,
-      supabaseKey: supabaseAnonKey,
-      options: {
-        auth: {
-          storageKey: "supabase.auth.temp.token",
-          persistSession: true,
-        },
-      },
-    })
-  }
-
-  // Set initializing flag
-  isInitializing = true
   console.log("Creating Supabase client singleton...")
 
   try {
@@ -65,18 +42,10 @@ export function getSupabaseClient() {
       },
     })
 
-    // Test the connection
-    supabaseInstance.auth.getSession().then(
-      () => console.log("✅ Supabase client initialized successfully"),
-      (error) => console.error("❌ Supabase initialization test failed:", error),
-    )
-
     return supabaseInstance
   } catch (error) {
     console.error("Error creating Supabase client:", error)
     throw error
-  } finally {
-    isInitializing = false
   }
 }
 
@@ -125,36 +94,48 @@ export async function isUserAuthenticated(): Promise<boolean> {
 
     // If not authenticated by fast check, verify with Supabase
     const supabase = getSupabaseClient()
-    const { data, error } = await supabase.auth.getSession()
 
-    if (error) {
-      console.error("Auth session error:", error)
+    try {
+      const { data, error } = await supabase.auth.getSession()
 
-      // Clear cache and return false
+      if (error) {
+        console.error("Auth session error:", error)
+
+        // Clear cache and return false
+        authCache.isAuthenticated = false
+        authCache.lastChecked = now
+        authCache.userId = null
+        authCache.expiresAt = now + 60 * 1000 // 1 minute for errors
+
+        return false
+      }
+
+      const isAuth = !!data.session
+
+      // Update cache
+      authCache.isAuthenticated = isAuth
+      authCache.lastChecked = now
+      authCache.userId = data.session?.user?.id || null
+      authCache.expiresAt = now + 5 * 60 * 1000 // 5 minutes
+
+      // Also update localStorage for even faster checks
+      if (typeof window !== "undefined" && isAuth) {
+        localStorage.setItem("userLoggedIn", "true")
+      }
+
+      return isAuth
+    } catch (innerError) {
+      console.error("Error checking session:", innerError)
+
+      // Handle session check errors
       authCache.isAuthenticated = false
       authCache.lastChecked = now
-      authCache.userId = null
       authCache.expiresAt = now + 60 * 1000 // 1 minute for errors
 
       return false
     }
-
-    const isAuth = !!data.session
-
-    // Update cache
-    authCache.isAuthenticated = isAuth
-    authCache.lastChecked = now
-    authCache.userId = data.session?.user?.id || null
-    authCache.expiresAt = now + 5 * 60 * 1000 // 5 minutes
-
-    // Also update localStorage for even faster checks
-    if (typeof window !== "undefined" && isAuth) {
-      localStorage.setItem("userLoggedIn", "true")
-    }
-
-    return isAuth
   } catch (error) {
-    console.error("Error checking authentication:", error)
+    console.error("Error in isUserAuthenticated:", error)
     return false
   }
 }

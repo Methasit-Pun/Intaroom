@@ -81,15 +81,17 @@ export default function LoginPage() {
       if (userType === "admin") {
         // Admin login - bypass Supabase
         if (username === "admin1" && password === "admin123") {
-          // Set admin status
+          // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
 
-          // Set cookie for server-side checks
+          // Set a cookie for server-side checks
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
-          // Set auth state and redirect
+          // Set auth state
           setAuthState(true)
+
+          // Redirect to admin page
           window.location.href = "/admin"
           return
         } else {
@@ -124,8 +126,13 @@ export default function LoginPage() {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          // Set auth state
+          // Store a flag in localStorage
           localStorage.setItem("userLoggedIn", "true")
+
+          // Set a cookie for server-side checks
+          document.cookie = `userLoggedIn=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
+
+          // Set auth state
           setAuthState(true, data.user.id)
 
           // Redirect to home
