@@ -4,11 +4,12 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2 } from "lucide-react"
-import { getSupabaseClient, setAuthState, isAuthenticatedFast } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -20,7 +21,12 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [userType, setUserType] = useState<"user" | "admin">("user")
   const [verificationSuccess, setVerificationSuccess] = useState(false)
-  const [checkingSession, setCheckingSession] = useState(true)
+
+  // Initialize Supabase client with explicit URL and key
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   // Check for verification success parameter
   useEffect(() => {
@@ -30,48 +36,30 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Fast session check
+  // Check if already logged in
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Fast check first - no API calls
-        if (isAuthenticatedFast()) {
-          // Redirect based on user type
-          if (localStorage.getItem("isAdmin") === "true") {
-            window.location.href = "/admin"
-          } else {
-            window.location.href = "/home"
-          }
+        // Check if admin is already logged in via localStorage
+        if (localStorage.getItem("isAdmin") === "true") {
+          router.push("/admin")
           return
         }
 
-        // If fast check fails, do a full check
-        const supabase = getSupabaseClient()
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error) {
-          console.error("Session error:", error)
-          setCheckingSession(false)
-          return
-        }
-
+        // For regular users, check Supabase session
+        const { data } = await supabase.auth.getSession()
         if (data.session) {
-          // Set auth state and redirect
-          setAuthState(true, data.session.user.id)
-          window.location.href = "/home"
-        } else {
-          setCheckingSession(false)
+          router.push("/")
         }
       } catch (error) {
         console.error("Session check error:", error)
-        setCheckingSession(false)
       }
     }
 
     checkSession()
-  }, [])
+  }, [router, supabase])
 
-  // Handle login with optimized flow
+  // Handle login with separate flows for admin and regular users
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -79,84 +67,45 @@ export default function LoginPage() {
 
     try {
       if (userType === "admin") {
-        // Admin login - bypass Supabase
+        // Admin login - completely bypass Supabase auth
+        // Check hardcoded admin credentials
         if (username === "admin1" && password === "admin123") {
           // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
 
-          // Set a cookie for server-side checks
+          // Set a cookie for server-side checks (middleware)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
 
-          // Set auth state
-          setAuthState(true)
-
           // Redirect to admin page
-          window.location.href = "/admin"
-          return
+          router.push("/admin")
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
-        // Regular user login
-        const supabase = getSupabaseClient()
-
-        // Get email from username
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, email")
-          .eq("username", username)
-          .single()
-
-        if (profileError || !profileData) {
-          throw new Error("Username not found. Please check your username and try again.")
-        }
-
-        // Sign in with email and password
+        // Regular user login - use Supabase authentication
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: profileData.email,
-          password,
+          email: username,
+          password: password,
         })
 
         if (error) throw error
 
         if (data.user) {
-          // Check email verification
+          // Check if email is verified for user accounts
           if (!data.user.email_confirmed_at) {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          // Store a flag in localStorage
-          localStorage.setItem("userLoggedIn", "true")
-
-          // Set a cookie for server-side checks
-          document.cookie = `userLoggedIn=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
-
-          // Set auth state
-          setAuthState(true, data.user.id)
-
-          // Redirect to home
-          window.location.href = "/home"
-          return
+          // Regular user
+          router.push("/")
         }
       }
     } catch (error: any) {
-      console.error("Login error:", error)
       setError(error.message || "Failed to login")
     } finally {
       setLoading(false)
     }
-  }
-
-  if (checkingSession) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-white mb-4" />
-          <p className="text-white">Checking authentication status...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -239,6 +188,7 @@ export default function LoginPage() {
               </Link>
             </div>
 
+            {/* Updated login button with black text and font size 20 */}
             <button
               type="submit"
               disabled={loading}

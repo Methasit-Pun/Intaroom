@@ -3,46 +3,41 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { LogOut, Loader2 } from "lucide-react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
-import { getSupabaseClient, clearAuthState } from "@/lib/supabase-client"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 
 interface LogoutButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
   className?: string
-  showTextOnMobile?: boolean
 }
 
-export default function LogoutButton({
-  variant = "outline",
-  className = "",
-  showTextOnMobile = true,
-}: LogoutButtonProps) {
+export default function LogoutButton({ variant = "outline", className = "" }: LogoutButtonProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+
+  // Initialize Supabase client
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   const handleLogout = async () => {
     setLoading(true)
     try {
-      // Get the Supabase client
-      const supabase = getSupabaseClient()
+      // Clear admin-related localStorage items
+      localStorage.removeItem("isAdmin")
+      localStorage.removeItem("adminEmail")
 
-      // Sign out from Supabase
+      // Clear admin cookie
+      document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+      // Sign out from Supabase (for regular users)
       await supabase.auth.signOut()
 
-      // Clear all auth state
-      clearAuthState()
-
-      // Clear cookies
-      document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
-      document.cookie = "userLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
-
-      // Redirect to login
-      window.location.href = "/login"
+      router.push("/login")
     } catch (error) {
       console.error("Error signing out:", error)
-
-      // Force redirect even if there's an error
-      window.location.href = "/login"
     } finally {
       setLoading(false)
     }
@@ -53,12 +48,12 @@ export default function LogoutButton({
       {loading ? (
         <>
           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          <span className={showTextOnMobile ? "" : "hidden sm:inline"}>Logging out...</span>
+          Logging out...
         </>
       ) : (
         <>
-          <LogOut className="h-4 w-4 mr-2 sm:mr-2" />
-          <span className={showTextOnMobile ? "" : "hidden sm:inline"}>Logout</span>
+          <LogOut className="h-4 w-4 mr-2" />
+          Logout
         </>
       )}
     </Button>

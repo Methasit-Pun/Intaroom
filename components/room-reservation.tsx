@@ -1,58 +1,37 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { ChevronLeft, ChevronRight, Loader2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
-import { MapPin } from "lucide-react"
-import { getSupabaseClient, isAuthenticatedFast } from "@/lib/supabase-client"
-import { formatDateToYYYYMMDD } from "@/lib/date-utils"
 
 // Static room data to avoid database queries
 const staticRooms = [
   {
     id: 1,
-    name: "Innospace Room (AIS 5G Garage Room)",
-    capacity: "8-10",
+    name: "Room 1",
+    capacity: 8,
     features: ["Projector", "TV"],
-    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
-    location: "1st Floor – Chula Engineering Centennial Building",
-    concept: "A space for innovation and creativity",
-    detailed_features: [
-      "65-inch LED display (with Wireless Cast capability)",
-      "Movable group tables",
-      "Power & USB outlets at every seat",
-      "High-speed Wi-Fi",
-      "Bluetooth speakers",
-    ],
+    image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQhW92Xms3PVXZwNiCuHAT4Gy7Pi510XmfzhQ&s",
   },
   {
     id: 2,
-    name: "601 IOIC Room",
-    capacity: "30-50",
+    name: "Room 2",
+    capacity: 12,
     features: ["Projector", "Whiteboard"],
-    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2020/10/3-1024x650.jpg",
-    location: "6th Floor – Chula Engineering Centennial Building (IOIC Lab)",
-    concept: "Room for club meetings and workshops",
-    detailed_features: ["Co-working style desks", "Whiteboard", "Separate monitor displays", "2 small meeting rooms"],
+    image_url: "/placeholder.svg?height=300&width=600",
   },
   {
     id: 3,
-    name: "602 Grass Room",
-    capacity: "30-50",
+    name: "Room 3",
+    capacity: 6,
     features: ["TV", "Conference Phone"],
-    image_url:
-      "https://www.intaniamagazine.com/wp-content/uploads/2022/12/%E0%B8%82%E0%B9%88%E0%B8%B2%E0%B8%A7%E0%B8%AA%E0%B8%B1%E0%B8%87%E0%B8%84%E0%B8%A1-12-e1669963399174.jpg",
-    location: "6th Floor – Chula Engineering Centennial Building",
-    concept: "Relaxed area with artificial grass for informal brainstorming or meetings",
-    detailed_features: [
-      "Bean bags",
-      "Artificial grass flooring for a natural atmosphere",
-      "TV display with HDMI connection",
-    ],
+    image_url: "/placeholder.svg?height=300&width=600",
   },
 ]
 
@@ -75,79 +54,46 @@ export const extendedTimeSlots = [
   "10 PM",
 ]
 
-// Cache for reservations data
-const reservationsCache = new Map<string, { data: any[]; timestamp: number }>()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-
 export default function RoomReservation() {
   const router = useRouter()
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Create a date object for today in the local timezone
-    const today = new Date()
-    // Reset the time to midnight to avoid timezone issues
-    today.setHours(0, 0, 0, 0)
-    return today
-  })
+  const [selectedDate, setSelectedDate] = useState(new Date())
   const [reservations, setReservations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [showRoomDetails, setShowRoomDetails] = useState(false)
-  const [checkingAuth, setCheckingAuth] = useState(true)
 
-  // Add a ref to track navigation state
-  const isNavigating = useRef(false)
+  // Initialize Supabase client
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
-  // Fast auth check
+  // Check if user is logged in
   useEffect(() => {
-    // Use fast auth check from localStorage only
-    const isAuth = isAuthenticatedFast()
-    setIsLoggedIn(isAuth)
-    setCheckingAuth(false)
-
-    // If not authenticated, redirect to login
-    if (!isAuth) {
-      router.push("/login")
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      setIsLoggedIn(!!data.session)
     }
-  }, [router])
 
-  // Current room
-  const currentRoom = useMemo(() => staticRooms[currentRoomIndex], [currentRoomIndex])
+    checkSession()
+  }, [supabase])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
-    if (!checkingAuth && isLoggedIn && currentRoom?.id) {
-      fetchReservations(currentRoom.id, selectedDate)
-    }
-  }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth, currentRoom?.id])
+    fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+  }, [selectedDate, currentRoomIndex])
 
-  // Function to fetch reservations with caching
+  // Function to fetch reservations
   const fetchReservations = async (roomId: number, date: Date) => {
     if (!roomId) return
 
     setLoading(true)
     try {
       const dateStr = date.toISOString().split("T")[0]
-      const cacheKey = `${roomId}-${dateStr}`
-
-      // Check cache first
-      const cached = reservationsCache.get(cacheKey)
-      const now = Date.now()
-
-      if (cached && now - cached.timestamp < CACHE_TTL) {
-        console.log(`Using cached reservations for room ${roomId} on ${dateStr}`)
-        setReservations(cached.data)
-        setLoading(false)
-        return
-      }
-
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
-      // Get the Supabase client
-      const supabase = getSupabaseClient()
-
-      // Direct query to reservations table
+      // Direct query to reservations table only, avoiding profiles table
       const { data, error } = await supabase
         .from("reservations")
         .select("booking_name, room_id, date, start_time, end_time, status")
@@ -156,16 +102,12 @@ export default function RoomReservation() {
 
       if (error) {
         console.error("Error fetching reservations:", error)
+        // Use empty array instead of throwing error
         setReservations([])
         return
       }
 
-      // Update cache
-      reservationsCache.set(cacheKey, {
-        data: data || [],
-        timestamp: now,
-      })
-
+      console.log(`Found ${data?.length || 0} reservations:`, data)
       setReservations(data || [])
     } catch (error: any) {
       console.error("Error in fetchReservations:", error)
@@ -174,6 +116,8 @@ export default function RoomReservation() {
       setLoading(false)
     }
   }
+
+  const currentRoom = staticRooms[currentRoomIndex]
 
   // Navigation functions for room carousel
   const prevRoom = () => {
@@ -185,7 +129,7 @@ export default function RoomReservation() {
   }
 
   // Generate week dates
-  const weekDates = useMemo(() => {
+  const getWeekDates = () => {
     const dates = []
     const startDate = new Date(selectedDate)
     startDate.setDate(startDate.getDate() - 3) // Start 3 days before selected date
@@ -197,10 +141,19 @@ export default function RoomReservation() {
     }
 
     return dates
-  }, [selectedDate])
+  }
+
+  const weekDates = getWeekDates()
+
+  // Format date range for display
+  const formatDateRange = () => {
+    const firstDate = weekDates[0]
+    const lastDate = weekDates[6]
+    return `${firstDate.toLocaleDateString("en-US", { month: "short" })} ${firstDate.getDate()}-${lastDate.getDate()}`
+  }
 
   // Generate calendar days for the current month view
-  const calendarDays = useMemo(() => {
+  const generateCalendarDays = () => {
     const days = []
     const firstDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
     const lastDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
@@ -222,7 +175,7 @@ export default function RoomReservation() {
     }
 
     return days
-  }, [selectedDate])
+  }
 
   // Check if a time slot has a reservation
   const getReservation = (time: string) => {
@@ -233,6 +186,8 @@ export default function RoomReservation() {
     // Convert to 24-hour format
     if (period === "PM" && hour < 12) hour += 12
     if (period === "AM" && hour === 12) hour = 0
+
+    const startTime = `${hour.toString().padStart(2, "0")}:00`
 
     // Find a reservation that matches this time slot
     return reservations.find((res) => {
@@ -258,52 +213,24 @@ export default function RoomReservation() {
     }))
   }
 
-  // Handle create reservation
   const handleCreateReservation = () => {
-    if (loading || !currentRoom.id || isNavigating.current) return
+    if (loading || !currentRoom.id) return
 
-    isNavigating.current = true
-    setLoading(true)
+    // Generate availability data
+    const availabilityData = generateAvailabilityData()
 
-    try {
-      // Generate availability data
-      const availabilityData = generateAvailabilityData()
+    // Navigate to the reservation page with room, date, and availability info
+    const params = new URLSearchParams()
+    params.set("room", currentRoom.id.toString())
+    params.set("roomName", currentRoom.name)
+    params.set("date", selectedDate.toISOString().split("T")[0])
+    params.set("availability", JSON.stringify(availabilityData))
 
-      // Create URL parameters
-      const params = new URLSearchParams()
-      params.set("room", currentRoom.id.toString())
-      params.set("roomName", currentRoom.name)
-      params.set("date", formatDateToYYYYMMDD(selectedDate))
-      params.set("availability", JSON.stringify(availabilityData))
-
-      const url = `/reserve?${params.toString()}`
-
-      // Set navigation flag
-      localStorage.setItem("navigationInProgress", "true")
-      localStorage.setItem("lastNavigationTimestamp", Date.now().toString())
-
-      // Navigate
-      window.location.href = url
-    } catch (error) {
-      console.error("Error in handleCreateReservation:", error)
-      setError("Failed to create reservation. Please try again.")
-      setLoading(false)
-      isNavigating.current = false
-    }
+    router.push(`/reserve?${params.toString()}`)
   }
 
-  // Handle my reservations navigation
   const handleMyReservations = () => {
-    if (loading || isNavigating.current) return
-
-    isNavigating.current = true
-
-    // Set navigation flag
-    localStorage.setItem("navigationInProgress", "true")
-    localStorage.setItem("lastNavigationTimestamp", Date.now().toString())
-
-    // Navigate
-    window.location.href = "/my-reservations"
+    router.push("/my-reservations")
   }
 
   return (
@@ -315,22 +242,11 @@ export default function RoomReservation() {
         </h1>
         {isLoggedIn && (
           <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              className="text-white hover:bg-white/10 sm:flex hidden"
-              onClick={handleMyReservations}
-            >
+            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
               <User className="h-4 w-4 mr-2" />
               My Reservations
             </Button>
-            <Button
-              variant="ghost"
-              className="text-white hover:bg-white/10 flex sm:hidden"
-              onClick={handleMyReservations}
-            >
-              <User className="h-4 w-4" />
-            </Button>
-            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" showTextOnMobile={false} />
+            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
           </div>
         )}
       </div>
@@ -349,10 +265,7 @@ export default function RoomReservation() {
                 className="object-cover"
               />
               {/* Add a dark overlay to dim the image */}
-              <div
-                className="absolute inset-0 bg-black/40 cursor-pointer"
-                onClick={() => setShowRoomDetails(true)}
-              ></div>
+              <div className="absolute inset-0 bg-black/40"></div>
 
               {/* Move room info on top of the image */}
               <div className="absolute bottom-0 left-0 p-3 w-full">
@@ -449,7 +362,7 @@ export default function RoomReservation() {
 
             {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-1 p-2 bg-gray-100">
-              {calendarDays.map((day, index) => {
+              {generateCalendarDays().map((day, index) => {
                 const isSelected =
                   day &&
                   day.getDate() === selectedDate.getDate() &&
@@ -529,100 +442,9 @@ export default function RoomReservation() {
                 "Create a New Reservation"
               )}
             </Button>
-
-            <div className="text-center mt-2">
-              <p className="text-white/70 text-sm">
-                Button not working?{" "}
-                <a
-                  href={`/reserve?room=${currentRoom.id}&roomName=${encodeURIComponent(currentRoom.name)}&date=${formatDateToYYYYMMDD(selectedDate)}`}
-                  className="underline hover:text-white"
-                >
-                  Click here instead
-                </a>
-              </p>
-            </div>
           </div>
         </div>
       </div>
-
-      {/* Room Details Modal */}
-      {showRoomDetails && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white text-gray-800 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="bg-[#5A0D16] text-white p-4 rounded-t-xl flex justify-between items-center">
-              <h2 className="text-xl font-bold">{currentRoom.name}</h2>
-              <button
-                onClick={() => setShowRoomDetails(false)}
-                className="p-1 rounded-full hover:bg-white/10 transition-colors"
-                aria-label="Close"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5">
-              {/* Location and Capacity */}
-              <div className="mb-5 bg-gray-50 p-3 rounded-lg">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="mt-1 bg-[#5A0D16]/10 p-1.5 rounded-full">
-                    <User className="h-4 w-4 text-[#5A0D16]" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Capacity</p>
-                    <p className="font-medium text-lg">Accommodates {currentRoom.capacity} people</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 bg-[#5A0D16]/10 p-1.5 rounded-full">
-                    <MapPin className="h-4 w-4 text-[#5A0D16]" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Location</p>
-                    <p className="font-medium">{currentRoom.location}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Concept */}
-              <div className="mb-5">
-                <h3 className="font-semibold text-[#5A0D16] mb-2 flex items-center">
-                  <ChevronRight className="h-4 w-4 mr-1" />
-                  Concept
-                </h3>
-                <p className="text-gray-700 pl-5">{currentRoom.concept}</p>
-              </div>
-
-              {/* Facilities */}
-              <div>
-                <h3 className="font-semibold text-[#5A0D16] mb-3 flex items-center">
-                  <ChevronRight className="h-4 w-4 mr-1" />
-                  Facilities
-                </h3>
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <div className="grid grid-cols-1 gap-2">
-                    {currentRoom.detailed_features?.map((feature, index) => (
-                      <div key={index} className="flex items-center p-2 hover:bg-gray-100 rounded-md transition-colors">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#5A0D16] mr-2 flex-shrink-0"></div>
-                        <span className="text-sm text-gray-700">{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Close Button */}
-              <button
-                className="mt-5 w-full py-2.5 bg-[#5A0D16] text-white rounded-lg hover:bg-[#8B1F2D] transition-colors font-medium"
-                onClick={() => setShowRoomDetails(false)}
-              >
-                Close Details
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

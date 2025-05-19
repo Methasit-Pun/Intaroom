@@ -20,9 +20,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
 
-// Update the Supabase client initialization to use the singleton pattern
-import { getSupabaseClient } from "@/lib/supabase-client"
-
 // Type for reservation data
 interface Reservation {
   id: number
@@ -75,11 +72,10 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState(false)
 
   // Initialize Supabase client
-  // const supabase = createClientComponentClient({
-  //   supabaseUrl,
-  //   supabaseKey: supabaseAnonKey,
-  // })
-  const supabase = getSupabaseClient()
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
 
   // Check if user is authenticated as admin
   useEffect(() => {
@@ -351,9 +347,9 @@ export default function AdminPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 p-4 md:p-6 lg:p-8">
+      <div className="flex-1 p-4">
         {error && (
-          <div className="max-w-7xl mx-auto mb-4 bg-red-500/20 border border-red-500 text-white p-3 rounded-lg">
+          <div className="max-w-4xl mx-auto mb-4 bg-red-500/20 border border-red-500 text-white p-3 rounded-lg">
             {error}
             <Button variant="link" className="text-white underline ml-2" onClick={fetchReservations}>
               Try Again
@@ -361,7 +357,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        <div className="bg-gray-200 rounded-xl overflow-hidden shadow-md text-gray-800 max-w-7xl mx-auto">
+        <div className="bg-gray-200 rounded-xl overflow-hidden shadow-md text-gray-800 max-w-4xl mx-auto">
           {/* Tabs */}
           <Tabs defaultValue="all" className="w-full" onValueChange={setCurrentTab}>
             <div className="bg-gray-300 p-3">
@@ -549,7 +545,7 @@ function ReservationTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto w-full">
+      <div className="overflow-x-auto">
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
@@ -558,9 +554,9 @@ function ReservationTable({
           <table className="w-full">
             <thead className="bg-gray-300 text-left">
               <tr>
-                <th className="p-3 font-medium w-[18%]">User</th>
+                <th className="p-3 font-medium w-[20%]">User</th>
                 <th className="p-3 font-medium w-[15%]">Room</th>
-                <th className="p-3 font-medium w-[22%]">Date & Time</th>
+                <th className="p-3 font-medium w-[20%]">Date & Time</th>
                 <th className="p-3 font-medium w-[20%]">Purpose</th>
                 <th className="p-3 font-medium w-[10%]">Status</th>
                 <th className="p-3 font-medium w-[15%]">Actions</th>
