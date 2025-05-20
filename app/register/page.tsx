@@ -14,6 +14,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [fullName, setFullName] = useState("")
+  const [username, setUsername] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,6 +60,7 @@ export default function RegisterPage() {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
+            username: username,
           },
         },
       })
@@ -73,6 +75,7 @@ export default function RegisterPage() {
           {
             id: data.user.id,
             full_name: fullName,
+            username: username,
             role: "user", // Always set to "user"
             email: email,
           },
@@ -117,6 +120,18 @@ export default function RegisterPage() {
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
               />
+            </div>
+
+            <div>
+              <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                required
+              />
+              <p className="text-xs text-white/70 mt-1 ml-2">Choose a unique username for login</p>
             </div>
 
             <div>

@@ -83,9 +83,27 @@ export default function LoginPage() {
           throw new Error("Invalid admin credentials")
         }
       } else {
-        // Regular user login - use Supabase authentication
+        // Regular user login - first check if input is an email or username
+        let email = username
+
+        // If username doesn't contain @ symbol, look up the email by username
+        if (!username.includes("@")) {
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("username", username)
+            .single()
+
+          if (profileError || !profileData) {
+            throw new Error("Username not found")
+          }
+
+          email = profileData.email
+        }
+
+        // Now login with the email
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: username,
+          email: email,
           password: password,
         })
 
@@ -151,7 +169,7 @@ export default function LoginPage() {
             <div>
               <input
                 type="text"
-                placeholder="Username"
+                placeholder={userType === "admin" ? "Admin Username" : "Username or Email"}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"

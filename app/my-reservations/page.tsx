@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Calendar, Clock, Home, AlertCircle, Loader2, Search, Filter, ChevronDown, ArrowLeft } from "lucide-react"
+import { Clock, Home, AlertCircle, Loader2, Search, Filter, ChevronDown, ArrowLeft, CalendarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
@@ -310,7 +310,7 @@ export default function MyReservationsPage() {
             ) : filteredReservations.length === 0 ? (
               <div className="text-center py-12">
                 <div className="bg-gray-100 inline-block p-4 rounded-full mb-4">
-                  <Calendar className="h-8 w-8 text-gray-500" />
+                  <CalendarIcon className="h-8 w-8 text-gray-500" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-700 mb-2">No reservations found</h3>
                 <p className="text-gray-500 mb-6">
@@ -350,7 +350,7 @@ export default function MyReservationsPage() {
                         <p className="text-sm text-gray-500 mb-2">Confirmation #{reservation.confirmation_number}</p>
                         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-600">
                           <div className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4 text-gray-500" />
+                            <CalendarIcon className="h-4 w-4 text-gray-500" />
                             {formatDate(reservation.date)}
                           </div>
                           <div className="flex items-center gap-1">

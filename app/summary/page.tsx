@@ -5,33 +5,23 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import {
-  Calendar,
-  Clock,
-  Users,
-  User,
-  Mail,
-  Phone,
-  Monitor,
-  CheckCircle,
-  Edit,
-  Trash2,
-  Loader2,
-  ArrowLeft,
-  AlertCircle,
-} from "lucide-react"
+import { Calendar, Clock, Users, User, Mail, Phone, Monitor, CheckCircle, ArrowLeft, Coins } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
-import { Checkbox } from "@/components/ui/checkbox"
-import RulesPoliciesModal from "@/components/rules-policies-modal"
+
+// Function to parse a date string in YYYY-MM-DD format to a Date object
+// This ensures we're working with the date in local timezone
+function parseLocalDate(dateString: string): Date {
+  const [year, month, day] = dateString.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
 
 export default function SummaryPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
   const [bookingData, setBookingData] = useState({
     bookingName: "",
     roomId: "",
@@ -46,6 +36,8 @@ export default function SummaryPage() {
     attendees: 4,
     specialRequests: ["Projector", "Whiteboard"],
     checkInMethod: "QR Code",
+    userCredits: 0,
+    requiredCredits: 0,
   })
 
   // Initialize Supabase client
@@ -62,9 +54,15 @@ export default function SummaryPage() {
         const roomId = searchParams.get("roomId") || ""
         const roomName = searchParams.get("roomName") || `Room ${roomId}`
         const date = searchParams.get("date") || ""
-        const confirmationNumber = searchParams.get("confirmationNumber") || "INR-123456"
+        const confirmationNumber = searchParams.get("confirmationNumber") || "INR-00000"
         const timeSlotsParam = searchParams.get("timeSlots") || "[]"
+        const userCredits = Number.parseInt(searchParams.get("userCredits") || "0", 10)
+        const requiredCredits = Number.parseInt(searchParams.get("requiredCredits") || "0", 10)
+
         let timeSlots: string[] = []
+
+        // Log the received date for debugging
+        console.log("Summary page received date:", date)
 
         try {
           timeSlots = JSON.parse(timeSlotsParam)
@@ -91,7 +89,9 @@ export default function SummaryPage() {
             confirmationNumber,
             bookedBy: profileData?.full_name || session.user.email || "",
             contactEmail: session.user.email || "",
-            contactPhone: profileData?.phone || "",
+            contactPhone: profileData?.telephone || "",
+            userCredits,
+            requiredCredits,
           })
         } else {
           // If no session, just use the URL params
@@ -103,6 +103,8 @@ export default function SummaryPage() {
             date,
             timeSlots,
             confirmationNumber,
+            userCredits,
+            requiredCredits,
           })
         }
       } catch (error) {
@@ -118,13 +120,21 @@ export default function SummaryPage() {
   const formatDate = (dateString: string) => {
     if (!dateString) return ""
 
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
+    try {
+      // Parse the date string to a Date object in local timezone
+      const localDate = parseLocalDate(dateString)
+
+      // Format the date for display
+      return localDate.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    } catch (error) {
+      console.error("Error formatting date:", error)
+      return dateString // Fallback to the original string
+    }
   }
 
   // Calculate duration from time slots
@@ -161,46 +171,6 @@ export default function SummaryPage() {
 
   const handleBack = () => {
     router.back()
-  }
-
-  const handleConfirmReservation = () => {
-    if (!agreedToTerms) {
-      setError("Please agree to the Rules & Policies before confirming your reservation.")
-      return
-    }
-
-    // Navigate back to the home page
-    router.push("/")
-  }
-
-  const handleModify = () => {
-    router.back()
-  }
-
-  const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel this reservation?")) {
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Delete the reservation from Supabase
-      const { error } = await supabase
-        .from("reservations")
-        .delete()
-        .eq("confirmation_number", bookingData.confirmationNumber)
-
-      if (error) throw error
-
-      router.push("/")
-    } catch (error: any) {
-      console.error("Error canceling reservation:", error)
-      setError(error.message || "Failed to cancel reservation")
-    } finally {
-      setLoading(false)
-    }
   }
 
   return (
@@ -241,6 +211,19 @@ export default function SummaryPage() {
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">Confirmation #{bookingData.confirmationNumber}</p>
+          </div>
+
+          {/* Credit information */}
+          <div className="p-3 bg-[#F8F3E6] border-b border-[#E6D9B8]">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Coins className="h-4 w-4 text-[#D4AF37]" />
+                <span className="text-sm font-medium">Credits Required: {bookingData.requiredCredits}</span>
+              </div>
+              <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-full text-xs">
+                <span className="font-medium">{bookingData.userCredits}</span> credits available
+              </div>
+            </div>
           </div>
 
           {/* Middle section - Details */}
@@ -343,72 +326,6 @@ export default function SummaryPage() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Rules & Policies Checkbox */}
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="terms"
-                  checked={agreedToTerms}
-                  onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
-                  className="mt-1"
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <label
-                    htmlFor="terms"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    I have read and agree to the Rules & Policies
-                  </label>
-                  <RulesPoliciesModal
-                    trigger={<button className="text-xs text-blue-600 hover:underline">View Rules & Policies</button>}
-                  />
-                </div>
-              </div>
-              {error && !agreedToTerms && (
-                <div className="mt-2 flex items-center text-red-600 text-xs">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Please agree to the Rules & Policies
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom section - Actions */}
-          <div className="p-4 bg-gray-100 border-t border-gray-200 space-y-3">
-            <Button
-              className="w-full bg-[#5A0D16] hover:bg-[#4A0B12] text-white shadow-md transition-all hover:shadow-lg"
-              onClick={handleConfirmReservation}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Confirm Reservation
-            </Button>
-
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 border-gray-300" onClick={handleModify}>
-                <Edit className="h-4 w-4 mr-2" />
-                Modify
-              </Button>
-
-              <Button
-                variant="outline"
-                className="flex-1 border-gray-300 text-red-600 hover:text-red-700 hover:bg-red-50"
-                onClick={handleCancel}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Canceling...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Cancel
-                  </>
-                )}
-              </Button>
             </div>
           </div>
         </div>

@@ -5,9 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import BookingNameModal from "@/components/booking-name-modal"
-import { AlertCircle, Loader2, ArrowLeft } from "lucide-react"
+import { AlertCircle, Loader2, ArrowLeft, Coins } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 // Type for time slot data
 interface TimeSlot {
@@ -29,13 +37,6 @@ function convertTimeFormat(timeString: string): string {
   return `${hour.toString().padStart(2, "0")}:00`
 }
 
-// Function to generate a confirmation number
-function generateConfirmationNumber() {
-  const prefix = "INR"
-  const randomPart = Math.floor(100000 + Math.random() * 900000) // 6-digit number
-  return `${prefix}-${randomPart}`
-}
-
 // Function to sort time slots chronologically
 function sortTimeSlots(slots: string[]): string[] {
   return [...slots].sort((a, b) => {
@@ -53,6 +54,13 @@ function sortTimeSlots(slots: string[]): string[] {
   })
 }
 
+// Function to parse a date string in YYYY-MM-DD format to a Date object
+// This ensures we're working with the date in local timezone
+function parseLocalDate(dateString: string): Date {
+  const [year, month, day] = dateString.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 export default function ReservePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -67,6 +75,8 @@ export default function ReservePage() {
   const [error, setError] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userCredits, setUserCredits] = useState(0)
+  const [isNotEnoughCreditsDialogOpen, setIsNotEnoughCreditsDialogOpen] = useState(false)
 
   const initialLoadComplete = useRef(false)
 
@@ -85,16 +95,29 @@ export default function ReservePage() {
       if (session?.user) {
         setUserId(session.user.id)
         setUserEmail(session.user.email)
+
+        // Fetch user credits
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("credits")
+          .eq("id", session.user.id)
+          .single()
+
+        if (profileData) {
+          setUserCredits(profileData.credits || 0)
+        }
       } else {
         // For development, use a dummy user ID if not logged in
         setUserId("dummy-user-id")
         setUserEmail("dummy@example.com")
+        setUserCredits(100) // Default credits
       }
     } catch (error) {
       console.error("Error getting user session:", error)
       // For development, use a dummy user ID if there's an error
       setUserId("dummy-user-id")
       setUserEmail("dummy@example.com")
+      setUserCredits(100) // Default credits
     }
   }, [supabase])
 
@@ -104,11 +127,16 @@ export default function ReservePage() {
     const roomNameParam = searchParams.get("roomName")
     const dateParam = searchParams.get("date")
     const availabilityParam = searchParams.get("availability")
+    const userCreditsParam = searchParams.get("userCredits")
+
+    // Log the received date parameter for debugging
+    console.log("Received date parameter:", dateParam)
 
     // Only update state if values have changed
     if (roomParam && roomParam !== roomId) setRoomId(roomParam)
     if (roomNameParam && roomNameParam !== roomName) setRoomName(roomNameParam)
     if (dateParam && dateParam !== date) setDate(dateParam)
+    if (userCreditsParam) setUserCredits(Number.parseInt(userCreditsParam, 10))
 
     // Reset selection state
     setSelectedSlots([])
@@ -150,14 +178,22 @@ export default function ReservePage() {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Select a date"
 
-    const date = new Date(dateString)
-    return (
-      date.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }) + getOrdinalSuffix(date.getDate())
-    )
+    try {
+      // Parse the date string to a Date object in local timezone
+      const localDate = parseLocalDate(dateString)
+
+      // Format the date for display
+      return (
+        localDate.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }) + getOrdinalSuffix(localDate.getDate())
+      )
+    } catch (error) {
+      console.error("Error formatting date:", error)
+      return dateString // Fallback to the original string
+    }
   }
 
   // Get ordinal suffix for day (1st, 2nd, 3rd, etc.)
@@ -180,11 +216,18 @@ export default function ReservePage() {
   }
 
   const handleNext = () => {
-    if (selectedSlots.length > 0) {
-      setIsBookingModalOpen(true)
-    } else {
+    if (selectedSlots.length === 0) {
       setError("Please select at least one time slot")
+      return
     }
+
+    // Check if user has enough credits
+    if (selectedSlots.length > userCredits) {
+      setIsNotEnoughCreditsDialogOpen(true)
+      return
+    }
+
+    setIsBookingModalOpen(true)
   }
 
   // Handle slot selection with max 3 slots limit
@@ -225,56 +268,6 @@ export default function ReservePage() {
       // Sort time slots chronologically
       const sortedTimeSlots = sortTimeSlots(selectedTimeSlots)
 
-      // Generate base confirmation number
-      const baseConfirmationNumber = generateConfirmationNumber()
-
-      // Track created reservations
-      const createdReservations = []
-
-      // Create reservation data for each time slot
-      for (let i = 0; i < sortedTimeSlots.length; i++) {
-        const timeSlot = sortedTimeSlots[i]
-
-        // Convert time format (e.g., "8 AM" to "08:00")
-        const startTime = convertTimeFormat(timeSlot)
-
-        // Calculate end time (1 hour later)
-        const [hourStr] = startTime.split(":")
-        const hour = Number.parseInt(hourStr)
-        const endTime = `${(hour + 1).toString().padStart(2, "0")}:00`
-
-        // Create a unique confirmation number for each slot by adding a suffix
-        const confirmationNumber =
-          sortedTimeSlots.length > 1 ? `${baseConfirmationNumber}-${i + 1}` : baseConfirmationNumber
-
-        // Create reservation in Supabase
-        const { data, error } = await supabase
-          .from("reservations")
-          .insert({
-            booking_name: bookingName,
-            room_id: Number.parseInt(roomId),
-            user_id: userId,
-            date: date,
-            start_time: startTime,
-            end_time: endTime,
-            status: "Pending",
-            purpose: bookingName, // Using booking name as purpose for simplicity
-            contact_email: userEmail,
-            confirmation_number: confirmationNumber,
-            check_in_method: "QR Code",
-          })
-          .select()
-
-        if (error) {
-          console.error("Supabase error:", error)
-          throw new Error(`Failed to create reservation: ${error.message}`)
-        }
-
-        if (data) {
-          createdReservations.push(data[0])
-        }
-      }
-
       // Navigate to summary page
       const params = new URLSearchParams()
       params.set("bookingName", bookingName)
@@ -282,12 +275,11 @@ export default function ReservePage() {
       params.set("roomName", roomName || `Room ${roomId}`)
       params.set("date", date)
       params.set("timeSlots", JSON.stringify(sortedTimeSlots))
-      params.set("confirmationNumber", baseConfirmationNumber) // Use the base number for display
+      params.set("userCredits", userCredits.toString())
+      params.set("requiredCredits", selectedSlots.length.toString())
 
-      // Add the first reservation ID for potential future reference
-      if (createdReservations.length > 0 && createdReservations[0].id) {
-        params.set("reservationId", createdReservations[0].id.toString())
-      }
+      // We'll use a placeholder confirmation number - the actual number will be generated on the summary page
+      params.set("confirmationNumber", "INR-00000")
 
       router.push(`/summary?${params.toString()}`)
     } catch (error: any) {
@@ -325,8 +317,14 @@ export default function ReservePage() {
             <h2 className="text-lg font-medium text-gray-800">{roomName || `Room ${roomId}`}</h2>
             <p className="text-sm text-gray-600 mb-2">{formatDate(date)}</p>
 
+            {/* Credits display */}
+            <div className="flex justify-center items-center gap-2 mt-2 bg-[#F8F3E6] px-3 py-1.5 rounded-full w-fit mx-auto">
+              <Coins className="h-4 w-4 text-[#D4AF37]" />
+              <span className="text-sm font-medium text-gray-800">{userCredits} Credits Available</span>
+            </div>
+
             {/* Legend */}
-            <div className="flex justify-center gap-6 mt-2">
+            <div className="flex justify-center gap-6 mt-3">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 <span className="text-sm text-gray-700">Available</span>
@@ -395,6 +393,21 @@ export default function ReservePage() {
             </div>
           </div>
 
+          {/* Selected slots summary */}
+          {selectedSlots.length > 0 && (
+            <div className="p-3 bg-[#F8F3E6] border-t border-[#E6D9B8]">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Coins className="h-4 w-4 text-[#D4AF37]" />
+                  <span className="text-sm font-medium text-gray-800">Credits required: {selectedSlots.length}</span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  {selectedSlots.length} hour{selectedSlots.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Next button */}
           <div className="p-4 bg-gray-300">
             <Button
@@ -421,6 +434,54 @@ export default function ReservePage() {
         onClose={() => setIsBookingModalOpen(false)}
         onConfirm={handleBookingConfirm}
       />
+
+      {/* Not Enough Credits Dialog */}
+      <Dialog open={isNotEnoughCreditsDialogOpen} onOpenChange={setIsNotEnoughCreditsDialogOpen}>
+        <DialogContent className="bg-white text-gray-800 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Not Enough Credits
+            </DialogTitle>
+            <DialogDescription className="text-base text-gray-600 pt-2">
+              You don't have enough credits for this reservation. You need {selectedSlots.length} credits, but you only
+              have {userCredits} credits available.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-[#FFF8E6] p-4 rounded-lg border border-[#F0E0B2] my-2">
+            <div className="flex items-start gap-3">
+              <Coins className="h-5 w-5 text-[#D4AF37] mt-0.5" />
+              <div>
+                <h4 className="font-medium text-gray-800">Credit Information</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Each time slot requires 1 credit. Please reduce the number of selected time slots or contact an
+                  administrator to add more credits to your account.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsNotEnoughCreditsDialogOpen(false)}
+              className="flex-1 sm:flex-none"
+            >
+              Go Back
+            </Button>
+            <Button
+              className="bg-[#5A0D16] hover:bg-[#4A0B12] text-white flex-1 sm:flex-none"
+              onClick={() => {
+                setIsNotEnoughCreditsDialogOpen(false)
+                router.push("/profile")
+              }}
+            >
+              View Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

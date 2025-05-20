@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
-import { ChevronLeft, ChevronRight, Loader2, User } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, User, Coins, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -62,6 +62,7 @@ export default function RoomReservation() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userCredits, setUserCredits] = useState(0)
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -69,11 +70,29 @@ export default function RoomReservation() {
     supabaseKey: supabaseAnonKey,
   })
 
-  // Check if user is logged in
+  // Check if user is logged in and fetch credits
   useEffect(() => {
     const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      setIsLoggedIn(!!data.session)
+      try {
+        const { data } = await supabase.auth.getSession()
+        const isUserLoggedIn = !!data.session
+        setIsLoggedIn(isUserLoggedIn)
+
+        if (isUserLoggedIn && data.session) {
+          // Fetch user credits
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("credits")
+            .eq("id", data.session.user.id)
+            .single()
+
+          if (!profileError && profileData) {
+            setUserCredits(profileData.credits || 0)
+          }
+        }
+      } catch (error) {
+        console.error("Session check error:", error)
+      }
     }
 
     checkSession()
@@ -84,13 +103,22 @@ export default function RoomReservation() {
     fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
   }, [selectedDate, currentRoomIndex])
 
+  // Function to format date as YYYY-MM-DD in local timezone
+  const formatDateForDatabase = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
   // Function to fetch reservations
   const fetchReservations = async (roomId: number, date: Date) => {
     if (!roomId) return
 
     setLoading(true)
     try {
-      const dateStr = date.toISOString().split("T")[0]
+      // Format date as YYYY-MM-DD for database query using local timezone
+      const dateStr = formatDateForDatabase(date)
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
       // Direct query to reservations table only, avoiding profiles table
@@ -179,7 +207,9 @@ export default function RoomReservation() {
 
   // Check if a time slot has a reservation
   const getReservation = (time: string) => {
-    const dateStr = selectedDate.toISOString().split("T")[0]
+    // Format date as YYYY-MM-DD for comparison using local timezone
+    const dateStr = formatDateForDatabase(selectedDate)
+
     let hour = Number.parseInt(time.split(" ")[0])
     const period = time.split(" ")[1]
 
@@ -216,21 +246,32 @@ export default function RoomReservation() {
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
-    // Generate availability data
+    // Format the selected date as YYYY-MM-DD in local timezone
+    const formattedDate = formatDateForDatabase(selectedDate)
+
+    // Log the date being passed to ensure it's correct
+    console.log("Creating reservation for date:", formattedDate, "Selected date:", selectedDate.toDateString())
+
+    // Generate availability data for the selected date
     const availabilityData = generateAvailabilityData()
 
     // Navigate to the reservation page with room, date, and availability info
     const params = new URLSearchParams()
     params.set("room", currentRoom.id.toString())
     params.set("roomName", currentRoom.name)
-    params.set("date", selectedDate.toISOString().split("T")[0])
+    params.set("date", formattedDate)
     params.set("availability", JSON.stringify(availabilityData))
+    params.set("userCredits", userCredits.toString())
 
     router.push(`/reserve?${params.toString()}`)
   }
 
   const handleMyReservations = () => {
     router.push("/my-reservations")
+  }
+
+  const handleProfile = () => {
+    router.push("/profile")
   }
 
   return (
@@ -241,12 +282,26 @@ export default function RoomReservation() {
           <span className="text-[#D4AF37]">INTA</span>ROOM
         </h1>
         {isLoggedIn && (
-          <div className="flex gap-2">
-            <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
-              <User className="h-4 w-4 mr-2" />
-              My Reservations
-            </Button>
-            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
+          <div className="flex gap-2 items-center">
+            {/* Credits display */}
+            <div className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-[#6D3B3B] rounded-full mr-1">
+              <Coins className="h-4 w-4 text-[#D4AF37]" />
+              <span className="text-sm font-medium">{userCredits} Credits</span>
+            </div>
+
+            <div className="flex space-x-1">
+              <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleProfile}>
+                <User className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Profile</span>
+              </Button>
+
+              <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
+                <CalendarDays className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">My Reservations</span>
+              </Button>
+
+              <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
+            </div>
           </div>
         )}
       </div>
@@ -381,7 +436,15 @@ export default function RoomReservation() {
                       day && "hover:bg-gray-200",
                     )}
                     disabled={!day || loading}
-                    onClick={() => day && setSelectedDate(day)}
+                    onClick={() => {
+                      if (day) {
+                        // Log the date being selected for debugging
+                        console.log("Selected date:", day.toDateString())
+                        setSelectedDate(day)
+                        // Immediately fetch reservations for the new date
+                        fetchReservations(currentRoom.id, day)
+                      }
+                    }}
                   >
                     {day ? day.getDate() : ""}
                   </button>
