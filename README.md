@@ -168,19 +168,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-```plaintext
-
-This README provides comprehensive instructions for setting up and running the Intania Room Reservation system. It includes detailed steps for installation, database setup, and troubleshooting common issues like the email verification problem you mentioned.
-
-The README is structured to be helpful for both developers working on the project and users who want to deploy it. It includes information about the project structure, features, and deployment instructions.
-
-<Actions>
-  <Action name="Add screenshots to README" description="Add screenshots of key pages to the README" />
-  <Action name="Create contribution guidelines" description="Create a CONTRIBUTING.md file with guidelines" />
-  <Action name="Add API documentation" description="Document the API endpoints used in the application" />
-  <Action name="Create database schema diagram" description="Add a visual representation of the database schema" />
-</Actions>
-
-
-```
