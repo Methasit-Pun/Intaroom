@@ -2,6 +2,7 @@ import type React from "react"
 import "./globals.css"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
+import { LiffProvider } from "@/components/liff-provider"
 
 // Import Markazi Text font for login button
 import { Markazi_Text } from "next/font/google"
@@ -28,7 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} ${markaziText.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-          {children}
+          <LiffProvider liffId="2006743184-dkWgpPwk">{children}</LiffProvider>
         </ThemeProvider>
       </body>
     </html>

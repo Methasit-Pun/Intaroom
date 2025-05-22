@@ -6,6 +6,7 @@ import { LogOut, Loader2 } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { useLiff } from "@/components/liff-provider"
 
 interface LogoutButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
@@ -15,6 +16,7 @@ interface LogoutButtonProps {
 export default function LogoutButton({ variant = "outline", className = "" }: LogoutButtonProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const { logout: liffLogout, isLoggedIn: isLiffLoggedIn } = useLiff()
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -31,6 +33,11 @@ export default function LogoutButton({ variant = "outline", className = "" }: Lo
 
       // Clear admin cookie
       document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+      // Logout from LINE if logged in via LIFF
+      if (isLiffLoggedIn) {
+        liffLogout()
+      }
 
       // Sign out from Supabase (for regular users)
       await supabase.auth.signOut()

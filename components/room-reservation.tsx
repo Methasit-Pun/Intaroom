@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
+import LineProfile from "@/components/line-profile"
+import { useLiff } from "@/components/liff-provider"
 
 // Static room data to avoid database queries
 const staticRooms = [
@@ -63,6 +65,7 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
+  const { isLoggedIn: isLiffLoggedIn } = useLiff()
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -75,7 +78,7 @@ export default function RoomReservation() {
     const checkSession = async () => {
       try {
         const { data } = await supabase.auth.getSession()
-        const isUserLoggedIn = !!data.session
+        const isUserLoggedIn = !!data.session || isLiffLoggedIn
         setIsLoggedIn(isUserLoggedIn)
 
         if (isUserLoggedIn && data.session) {
@@ -96,7 +99,7 @@ export default function RoomReservation() {
     }
 
     checkSession()
-  }, [supabase])
+  }, [supabase, isLiffLoggedIn])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
@@ -287,6 +290,11 @@ export default function RoomReservation() {
             <div className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-[#6D3B3B] rounded-full mr-1">
               <Coins className="h-4 w-4 text-[#D4AF37]" />
               <span className="text-sm font-medium">{userCredits} Credits</span>
+            </div>
+
+            {/* LINE Profile */}
+            <div className="hidden sm:block">
+              <LineProfile />
             </div>
 
             <div className="flex space-x-1">

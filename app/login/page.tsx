@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2 } from "lucide-react"
+import LineLoginButton from "@/components/line-login-button"
+import { useLiff } from "@/components/liff-provider"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -21,6 +23,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [userType, setUserType] = useState<"user" | "admin">("user")
   const [verificationSuccess, setVerificationSuccess] = useState(false)
+  const { isLoggedIn, profile } = useLiff()
 
   // Initialize Supabase client with explicit URL and key
   const supabase = createClientComponentClient({
@@ -46,6 +49,12 @@ export default function LoginPage() {
           return
         }
 
+        // Check if logged in via LINE
+        if (isLoggedIn && profile) {
+          router.push("/")
+          return
+        }
+
         // For regular users, check Supabase session
         const { data } = await supabase.auth.getSession()
         if (data.session) {
@@ -57,7 +66,7 @@ export default function LoginPage() {
     }
 
     checkSession()
-  }, [router, supabase])
+  }, [router, supabase, isLoggedIn, profile])
 
   // Handle login with separate flows for admin and regular users
   const handleLogin = async (e: React.FormEvent) => {
@@ -163,6 +172,20 @@ export default function LoginPage() {
             Admin
           </button>
         </div>
+
+        {userType === "user" && (
+          <div className="mb-6">
+            <LineLoginButton />
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/20"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-[#6D3B3B] px-2 text-white/60">or continue with</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
