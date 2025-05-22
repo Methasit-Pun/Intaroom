@@ -1,8 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { getSupabaseClient } from "@/lib/supabase-browser"
 
 // Define the LIFF type
 declare global {
@@ -40,12 +39,15 @@ const LiffContext = createContext<LiffContextType>({
 
 export const useLiff = () => useContext(LiffContext)
 
+// Add fallback prop to the LiffProviderProps
 type LiffProviderProps = {
   children: ReactNode
   liffId: string
+  fallback?: ReactNode
 }
 
-export function LiffProvider({ children, liffId }: LiffProviderProps) {
+// Update the LiffProvider function to use the fallback
+export function LiffProvider({ children, liffId, fallback }: LiffProviderProps) {
   const [liff, setLiff] = useState<any>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -54,10 +56,7 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
   const [error, setError] = useState<Error | null>(null)
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const supabase = getSupabaseClient()
 
   // Initialize LIFF
   useEffect(() => {
@@ -67,8 +66,11 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         const liffModule = await import("@line/liff")
         const liffInstance = liffModule.default
 
-        // Initialize LIFF
-        await liffInstance.init({ liffId })
+        // Initialize LIFF with more options
+        await liffInstance.init({
+          liffId,
+          withLoginOnExternalBrowser: true, // Allow login in external browser
+        })
         console.log("LIFF initialized successfully")
 
         setLiff(liffInstance)
@@ -79,16 +81,22 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         // If user is logged in, get profile
         if (liffInstance.isLoggedIn()) {
           console.log("User is logged in with LINE")
-          const lineProfile = await liffInstance.getProfile()
-          setProfile({
-            userId: lineProfile.userId,
-            displayName: lineProfile.displayName,
-            pictureUrl: lineProfile.pictureUrl,
-            email: liffInstance.getDecodedIDToken()?.email,
-          })
+          try {
+            const lineProfile = await liffInstance.getProfile()
+            console.log("LINE profile retrieved:", lineProfile)
+            setProfile({
+              userId: lineProfile.userId,
+              displayName: lineProfile.displayName,
+              pictureUrl: lineProfile.pictureUrl,
+              email: liffInstance.getDecodedIDToken()?.email,
+            })
 
-          // Authenticate with backend
-          await authenticateWithBackend(lineProfile)
+            // Authenticate with backend
+            await authenticateWithBackend(lineProfile)
+          } catch (profileError) {
+            console.error("Error getting LINE profile:", profileError)
+            setError(profileError instanceof Error ? profileError : new Error("Failed to get LINE profile"))
+          }
         } else {
           console.log("User is not logged in with LINE")
         }
@@ -154,10 +162,23 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
 
   // Login function
   const login = () => {
-    if (!liff) return
+    if (!liff) {
+      console.error("LIFF not initialized")
+      return
+    }
 
-    if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: window.location.href })
+    try {
+      if (!liff.isLoggedIn()) {
+        // Get the current URL for the redirect
+        const redirectUri = window.location.href.split("?")[0] // Remove any query params
+        console.log("Logging in with redirect URI:", redirectUri)
+
+        liff.login({
+          redirectUri: redirectUri,
+        })
+      }
+    } catch (error) {
+      console.error("Error during LINE login:", error)
     }
   }
 
@@ -190,6 +211,11 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     error,
     login,
     logout,
+  }
+
+  // Show fallback while loading or if there's an error
+  if (!isReady && fallback) {
+    return <>{fallback}</>
   }
 
   return <LiffContext.Provider value={value}>{children}</LiffContext.Provider>

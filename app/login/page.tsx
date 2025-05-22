@@ -12,6 +12,7 @@ import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2 } from "lucide-react"
 import LineLoginButton from "@/components/line-login-button"
 import { useLiff } from "@/components/liff-provider"
+import LineDebug from "@/components/line-debug"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -254,6 +255,7 @@ export default function LoginPage() {
           </Link>
         </div>
       </div>
+      <LineDebug />
     </div>
   )
 }
