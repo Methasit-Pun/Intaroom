@@ -124,46 +124,29 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
       }
 
       if (!existingUser) {
-        // Create a simple anonymous user with LINE data
-        const randomEmail = `line_${lineProfile.userId}_${Math.random().toString(36).substring(2)}@example.com`
-        const randomPassword = crypto.randomUUID()
+        // This is a new LINE user - redirect to profile completion page
+        // We'll create a temporary session to track this user
+        localStorage.setItem("lineUserNeedsProfile", "true")
 
-        console.log("Creating new user with LINE data")
-
-        const { data: authUser, error: authError } = await supabase.auth.signUp({
-          email: randomEmail,
-          password: randomPassword,
-          options: {
-            data: {
-              full_name: lineProfile.displayName,
-              line_user_id: lineProfile.userId,
-              avatar_url: lineProfile.pictureUrl,
-            },
-          },
-        })
-
-        if (authError) {
-          console.error("Error creating user:", authError)
-        } else {
-          console.log("User created successfully")
-        }
+        // Redirect to profile completion page
+        window.location.href = "/profile/complete"
       } else {
         console.log("User already exists, signing in")
 
         // User exists, just update the session
         await supabase.auth
           .signInWithPassword({
-            email: existingUser.email,
+            email: existingUser.email || `line_${lineProfile.userId}@example.com`,
             password: existingUser.line_user_id || "default_password",
           })
           .catch((err) => {
             console.log("Error signing in existing user, creating session anyway:", err)
             // Even if sign in fails, we'll continue with the LINE session
           })
-      }
 
-      // Force redirect to main page after successful LINE login
-      window.location.href = "/"
+        // Force redirect to main page after successful LINE login
+        window.location.href = "/"
+      }
     } catch (err) {
       console.error("Error authenticating with backend:", err)
     }
