@@ -77,20 +77,46 @@ export default function RoomReservation() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        // Check if logged in via LINE (from localStorage)
+        const lineUserId = localStorage.getItem("lineUserId")
+        const isLineLoggedIn = !!lineUserId
+
+        // Check if logged in via Supabase
         const { data } = await supabase.auth.getSession()
-        const isUserLoggedIn = !!data.session || isLiffLoggedIn
+        const isSupabaseLoggedIn = !!data.session
+
+        // User is logged in if either LINE or Supabase session exists
+        const isUserLoggedIn = isSupabaseLoggedIn || isLineLoggedIn || isLiffLoggedIn
         setIsLoggedIn(isUserLoggedIn)
 
-        if (isUserLoggedIn && data.session) {
-          // Fetch user credits
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("credits")
-            .eq("id", data.session.user.id)
-            .single()
+        if (isUserLoggedIn) {
+          // If logged in via Supabase, fetch credits from there
+          if (isSupabaseLoggedIn && data.session) {
+            // Fetch user credits
+            const { data: profileData, error: profileError } = await supabase
+              .from("profiles")
+              .select("credits")
+              .eq("id", data.session.user.id)
+              .single()
 
-          if (!profileError && profileData) {
-            setUserCredits(profileData.credits || 0)
+            if (!profileError && profileData) {
+              setUserCredits(profileData.credits || 0)
+            }
+          }
+          // If logged in via LINE but not Supabase, fetch by LINE user ID
+          else if (lineUserId) {
+            const { data: lineUserData, error: lineUserError } = await supabase
+              .from("profiles")
+              .select("credits")
+              .eq("line_user_id", lineUserId)
+              .single()
+
+            if (!lineUserError && lineUserData) {
+              setUserCredits(lineUserData.credits || 0)
+            } else {
+              // Default credits if not found
+              setUserCredits(100)
+            }
           }
         }
       } catch (error) {
