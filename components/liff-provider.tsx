@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { getSupabaseClient } from "@/lib/supabase-browser"
+import LiffScript from "./liff-script"
 
 // Define the LIFF type
 declare global {
@@ -39,14 +40,12 @@ const LiffContext = createContext<LiffContextType>({
 
 export const useLiff = () => useContext(LiffContext)
 
-// Add fallback prop to the LiffProviderProps
 type LiffProviderProps = {
   children: ReactNode
   liffId: string
   fallback?: ReactNode
 }
 
-// Update the LiffProvider function to use the fallback
 export function LiffProvider({ children, liffId, fallback }: LiffProviderProps) {
   const [liff, setLiff] = useState<any>(null)
   const [isReady, setIsReady] = useState(false)
@@ -54,17 +53,25 @@ export function LiffProvider({ children, liffId, fallback }: LiffProviderProps) 
   const [profile, setProfile] = useState<LiffContextType["profile"]>(null)
   const [isInClient, setIsInClient] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [sdkLoaded, setSdkLoaded] = useState(false)
 
   // Initialize Supabase client
   const supabase = getSupabaseClient()
 
-  // Initialize LIFF
+  // Handle LIFF SDK load
+  const handleLiffLoad = () => {
+    console.log("LIFF SDK load callback triggered")
+    setSdkLoaded(true)
+  }
+
+  // Initialize LIFF after SDK is loaded
   useEffect(() => {
+    if (!sdkLoaded || !window.liff) return
+
     const initLiff = async () => {
       try {
-        // Import LIFF dynamically
-        const liffModule = await import("@line/liff")
-        const liffInstance = liffModule.default
+        // Use the global LIFF object
+        const liffInstance = window.liff
 
         // Initialize LIFF with more options
         await liffInstance.init({
@@ -107,7 +114,7 @@ export function LiffProvider({ children, liffId, fallback }: LiffProviderProps) 
     }
 
     initLiff()
-  }, [liffId])
+  }, [liffId, sdkLoaded])
 
   // Authenticate with backend
   const authenticateWithBackend = async (lineProfile: any) => {
@@ -215,8 +222,18 @@ export function LiffProvider({ children, liffId, fallback }: LiffProviderProps) 
 
   // Show fallback while loading or if there's an error
   if (!isReady && fallback) {
-    return <>{fallback}</>
+    return (
+      <>
+        <LiffScript onLoad={handleLiffLoad} onError={setError} />
+        {fallback}
+      </>
+    )
   }
 
-  return <LiffContext.Provider value={value}>{children}</LiffContext.Provider>
+  return (
+    <LiffContext.Provider value={value}>
+      <LiffScript onLoad={handleLiffLoad} onError={setError} />
+      {children}
+    </LiffContext.Provider>
+  )
 }

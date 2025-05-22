@@ -3,13 +3,20 @@
 import { Button } from "@/components/ui/button"
 import { useLiff } from "@/components/liff-provider"
 import { Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export default function LineLoginButton() {
-  const { login, isReady, isLoggedIn } = useLiff()
+  const { login, isReady, isLoggedIn, error: liffError } = useLiff()
   const [isLoggingIn, setIsLoggingIn] = useState(false)
-  // Add error state
   const [loginError, setLoginError] = useState<string | null>(null)
+
+  // Update error state when LIFF error changes
+  useEffect(() => {
+    if (liffError) {
+      setLoginError(liffError.message)
+      setIsLoggingIn(false)
+    }
+  }, [liffError])
 
   // Update the handleLogin function
   const handleLogin = () => {
@@ -35,7 +42,6 @@ export default function LineLoginButton() {
     }
   }
 
-  // Add error message display to the return JSX after the button:
   return (
     <>
       <Button
@@ -63,7 +69,7 @@ export default function LineLoginButton() {
           <p className="mt-1 text-xs">Please make sure you have a LINE account and try again.</p>
         </div>
       )}
-      {!isReady && (
+      {!isReady && !loginError && (
         <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md text-yellow-700 text-xs">
           LINE login is initializing. Please wait...
         </div>

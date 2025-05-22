@@ -32,6 +32,9 @@ export default function LineDebug() {
 
       <div className="space-y-2 text-sm">
         <div>
+          <span className="font-semibold">LIFF SDK Loaded:</span> {window.liff ? "Yes" : "No"}
+        </div>
+        <div>
           <span className="font-semibold">LIFF Ready:</span> {isReady ? "Yes" : "No"}
         </div>
         <div>
@@ -52,31 +55,37 @@ export default function LineDebug() {
           <span className="font-semibold">LIFF Version:</span> {liff?.version || "N/A"}
         </div>
         <div>
-          <span className="font-semibold">Is in LINE App:</span> {liff?.isInClient() ? "Yes" : "No"}
+          <span className="font-semibold">Is in LINE App:</span> {liff?.isInClient?.() ? "Yes" : "No"}
         </div>
         <div>
-          <span className="font-semibold">OS:</span> {liff?.getOS() || "N/A"}
+          <span className="font-semibold">OS:</span> {liff?.getOS?.() || "N/A"}
         </div>
         <div>
-          <span className="font-semibold">Language:</span> {liff?.getLanguage() || "N/A"}
+          <span className="font-semibold">Language:</span> {liff?.getLanguage?.() || "N/A"}
         </div>
         <div>
-          <span className="font-semibold">LINE App Version:</span> {liff?.getLineVersion() || "N/A"}
+          <span className="font-semibold">LINE App Version:</span> {liff?.getLineVersion?.() || "N/A"}
+        </div>
+        <div>
+          <span className="font-semibold">Current URL:</span> {window.location.href}
         </div>
         <div className="pt-2">
           <Button
             size="sm"
             variant="outline"
             onClick={() => {
-              if (liff) {
+              if (window.liff) {
                 try {
-                  liff.login()
+                  window.liff.login()
                 } catch (e) {
                   console.error("Manual login error:", e)
+                  alert("Login error: " + (e instanceof Error ? e.message : String(e)))
                 }
+              } else {
+                alert("LIFF SDK not loaded")
               }
             }}
-            disabled={!isReady || isLoggedIn}
+            disabled={!window.liff || isLoggedIn}
           >
             Force LINE Login
           </Button>
