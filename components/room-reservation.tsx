@@ -65,7 +65,7 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
-  const { isLoggedIn: isLiffLoggedIn } = useLiff()
+  const { isLoggedIn: isLiffLoggedIn, liffProfile } = useLiff()
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -77,33 +77,22 @@ export default function RoomReservation() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Check multiple login states
-        const lineUserId = localStorage.getItem("lineUserId")
-        const isLineLoggedIn = localStorage.getItem("isLineLoggedIn") === "true"
-        const storedCredits = localStorage.getItem("userCredits")
-
         // Check if logged in via Supabase
         const { data } = await supabase.auth.getSession()
         const isSupabaseLoggedIn = !!data.session
 
-        // User is logged in if any of these conditions are true
-        const isUserLoggedIn = isSupabaseLoggedIn || isLineLoggedIn || isLiffLoggedIn || !!lineUserId
+        // Check if logged in via LIFF
+        const isUserLoggedIn = isSupabaseLoggedIn || isLiffLoggedIn
+
         setIsLoggedIn(isUserLoggedIn)
 
         console.log("Login state check:", {
           isSupabaseLoggedIn,
-          isLineLoggedIn,
           isLiffLoggedIn,
-          hasLineUserId: !!lineUserId,
           finalLoginState: isUserLoggedIn,
         })
 
         if (isUserLoggedIn) {
-          // Try to get credits from localStorage first (faster)
-          if (storedCredits) {
-            setUserCredits(Number.parseInt(storedCredits, 10) || 100)
-          }
-
           // If logged in via Supabase, fetch credits from database
           if (isSupabaseLoggedIn && data.session) {
             try {
@@ -114,50 +103,40 @@ export default function RoomReservation() {
                 .single()
 
               if (!profileError && profileData) {
-                const credits = profileData.credits || 100
-                setUserCredits(credits)
-                localStorage.setItem("userCredits", credits.toString())
+                setUserCredits(profileData.credits || 100)
               }
             } catch (err) {
               console.error("Error fetching Supabase credits:", err)
+              setUserCredits(100)
             }
           }
-          // If logged in via LINE, try to fetch by LINE user ID
-          else if (lineUserId) {
+          // If logged in via LIFF, try to fetch by LINE user ID
+          else if (isLiffLoggedIn && liffProfile) {
             try {
               const { data: lineUserData, error: lineUserError } = await supabase
                 .from("profiles")
                 .select("credits")
-                .eq("line_user_id", lineUserId)
+                .eq("line_user_id", liffProfile.userId)
                 .single()
 
               if (!lineUserError && lineUserData) {
-                const credits = lineUserData.credits || 100
-                setUserCredits(credits)
-                localStorage.setItem("userCredits", credits.toString())
+                setUserCredits(lineUserData.credits || 100)
+              } else {
+                setUserCredits(100)
               }
             } catch (err) {
               console.error("Error fetching LINE user credits:", err)
-              // Use stored credits or default
-              setUserCredits(Number.parseInt(storedCredits || "100", 10))
+              setUserCredits(100)
             }
           }
         }
       } catch (error) {
         console.error("Session check error:", error)
-        // Fallback to localStorage values
-        const lineUserId = localStorage.getItem("lineUserId")
-        const storedCredits = localStorage.getItem("userCredits")
-
-        if (lineUserId) {
-          setIsLoggedIn(true)
-          setUserCredits(Number.parseInt(storedCredits || "100", 10))
-        }
       }
     }
 
     checkSession()
-  }, [supabase, isLiffLoggedIn])
+  }, [supabase, isLiffLoggedIn, liffProfile])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
@@ -381,6 +360,16 @@ export default function RoomReservation() {
             className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
           >
             Login
+          </Button>
+        )}
+        {process.env.NODE_ENV === "development" && (
+          <Button
+            onClick={() => router.push("/test-auth")}
+            variant="outline"
+            className="ml-2 text-white border-white/30 hover:bg-white/10"
+            size="sm"
+          >
+            Test Auth
           </Button>
         )}
       </div>

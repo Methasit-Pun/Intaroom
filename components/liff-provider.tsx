@@ -76,11 +76,11 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         setIsInClient(liffInstance.isInClient())
         setIsLoggedIn(liffInstance.isLoggedIn())
 
-        // If user is logged in, get profile
+        // If user is logged in, get profile and handle authentication
         if (liffInstance.isLoggedIn()) {
           console.log("User is logged in with LINE")
           const lineProfile = await liffInstance.getProfile()
-          console.log("Authenticating with LINE profile:", lineProfile)
+          console.log("LINE profile:", lineProfile)
 
           setProfile({
             userId: lineProfile.userId,
@@ -89,20 +89,8 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
             email: liffInstance.getDecodedIDToken()?.email,
           })
 
-          // Store LINE user data in localStorage immediately
-          localStorage.setItem("lineUserId", lineProfile.userId)
-          localStorage.setItem("lineDisplayName", lineProfile.displayName)
-          localStorage.setItem("linePictureUrl", lineProfile.pictureUrl || "")
-          localStorage.setItem("isLineLoggedIn", "true")
-
-          // Authenticate with backend (non-blocking)
-          authenticateWithBackend(lineProfile).catch(console.error)
-
-          // Redirect to main page immediately
-          if (window.location.pathname === "/login") {
-            console.log("Redirecting to main page...")
-            window.location.href = "/"
-          }
+          // Handle Supabase authentication
+          await handleSupabaseAuth(lineProfile)
         } else {
           console.log("User is not logged in with LINE")
         }
@@ -115,15 +103,12 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     initLiff()
   }, [liffId])
 
-  // Authenticate with backend (improved with retry logic)
-  const authenticateWithBackend = async (lineProfile: any, retryCount = 0) => {
-    const maxRetries = 3
-    const retryDelay = 1000 * Math.pow(2, retryCount) // Exponential backoff
-
+  // Handle Supabase authentication
+  const handleSupabaseAuth = async (lineProfile: any) => {
     try {
-      console.log(`Authenticating with backend (attempt ${retryCount + 1})`)
+      console.log("Handling Supabase authentication for LINE user:", lineProfile.userId)
 
-      // First, check if user already exists
+      // Check if user exists in Supabase
       const { data: existingUser, error: userError } = await supabase
         .from("profiles")
         .select("*")
@@ -136,86 +121,81 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
       }
 
       if (existingUser) {
-        console.log("User already exists in database:", existingUser)
-        // User exists, just update localStorage with existing data
-        localStorage.setItem("userEmail", existingUser.email)
-        localStorage.setItem("userCredits", existingUser.credits?.toString() || "100")
-        return
-      }
+        console.log("Existing user found:", existingUser)
 
-      // User doesn't exist, create new user
-      console.log("Creating new user with LINE data")
+        // Sign in existing user
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: existingUser.email,
+          password: `line_${lineProfile.userId}`, // Use LINE user ID as password
+        })
 
-      // Generate a unique email and password
-      const timestamp = Date.now()
-      const randomSuffix = Math.random().toString(36).substring(2, 8)
-      const uniqueEmail = `line_${lineProfile.userId}_${timestamp}_${randomSuffix}@lineuser.local`
-      const password = `line_${lineProfile.userId}_${timestamp}`
-
-      const { data: authUser, error: authError } = await supabase.auth.signUp({
-        email: uniqueEmail,
-        password: password,
-        options: {
-          data: {
-            full_name: lineProfile.displayName,
-            line_user_id: lineProfile.userId,
-            avatar_url: lineProfile.pictureUrl,
-            username: `line_${lineProfile.userId}`,
-          },
-        },
-      })
-
-      if (authError) {
-        console.error("Error creating user:", authError)
-
-        // If it's a rate limit error, retry with exponential backoff
-        if (authError.message.includes("429") || authError.message.includes("rate") || retryCount < maxRetries) {
-          console.log(`Retrying in ${retryDelay}ms...`)
-          setTimeout(() => {
-            authenticateWithBackend(lineProfile, retryCount + 1)
-          }, retryDelay)
-          return
+        if (signInError) {
+          console.error("Error signing in existing user:", signInError)
+          // If sign in fails, we'll still redirect to profile to update info
         }
 
-        throw authError
-      }
+        // Check if user has completed their profile
+        if (!existingUser.full_name || !existingUser.telephone) {
+          console.log("User profile incomplete, redirecting to profile page")
+          window.location.href = "/profile?setup=true"
+        } else {
+          console.log("User profile complete, redirecting to main page")
+          window.location.href = "/"
+        }
+      } else {
+        console.log("New user, creating account")
 
-      if (authUser.user) {
-        console.log("User created successfully:", authUser.user.id)
+        // Create new user
+        const userEmail = `line_${lineProfile.userId}@lineuser.local`
+        const userPassword = `line_${lineProfile.userId}`
 
-        // Store user data in localStorage
-        localStorage.setItem("userEmail", uniqueEmail)
-        localStorage.setItem("userCredits", "100")
-
-        // Try to update the profile with additional LINE data
-        try {
-          await supabase
-            .from("profiles")
-            .update({
-              full_name: lineProfile.displayName,
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: userEmail,
+          password: userPassword,
+          options: {
+            data: {
               line_user_id: lineProfile.userId,
+              display_name: lineProfile.displayName,
               avatar_url: lineProfile.pictureUrl,
-              credits: 100,
-            })
-            .eq("id", authUser.user.id)
-        } catch (updateError) {
-          console.error("Error updating profile, but user was created:", updateError)
-          // Don't throw here, user creation was successful
+            },
+          },
+        })
+
+        if (authError) {
+          console.error("Error creating user:", authError)
+          throw authError
+        }
+
+        if (authData.user) {
+          console.log("New user created:", authData.user.id)
+
+          // Create profile record
+          const { error: profileError } = await supabase.from("profiles").insert({
+            id: authData.user.id,
+            email: userEmail,
+            line_user_id: lineProfile.userId,
+            username: `line_${lineProfile.userId}`,
+            full_name: lineProfile.displayName,
+            avatar_url: lineProfile.pictureUrl,
+            role: "user",
+            email_verified: true,
+            credits: 100,
+          })
+
+          if (profileError) {
+            console.error("Error creating profile:", profileError)
+            // Continue anyway, the trigger should handle profile creation
+          }
+
+          // Redirect to profile setup
+          console.log("Redirecting new user to profile setup")
+          window.location.href = "/profile?setup=true&new=true"
         }
       }
     } catch (err) {
-      console.error("Error authenticating with backend:", err)
-
-      // Even if backend auth fails, we can still use LINE login
-      // Store minimal data for app functionality
-      localStorage.setItem("userCredits", "100")
-
-      if (retryCount < maxRetries) {
-        console.log(`Retrying authentication in ${retryDelay}ms...`)
-        setTimeout(() => {
-          authenticateWithBackend(lineProfile, retryCount + 1)
-        }, retryDelay)
-      }
+      console.error("Error in Supabase authentication:", err)
+      // Redirect to profile page anyway so user can try to complete setup
+      window.location.href = "/profile?setup=true&error=true"
     }
   }
 
@@ -224,6 +204,7 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     if (!liff) return
 
     if (!liff.isLoggedIn()) {
+      console.log("Initiating LINE login")
       liff.login({ redirectUri: window.location.href })
     }
   }
@@ -233,14 +214,6 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     if (!liff) return
 
     try {
-      // Clear localStorage
-      localStorage.removeItem("lineUserId")
-      localStorage.removeItem("lineDisplayName")
-      localStorage.removeItem("linePictureUrl")
-      localStorage.removeItem("isLineLoggedIn")
-      localStorage.removeItem("userEmail")
-      localStorage.removeItem("userCredits")
-
       // Logout from LIFF
       if (liff.isLoggedIn()) {
         liff.logout()

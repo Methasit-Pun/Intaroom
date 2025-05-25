@@ -51,7 +51,18 @@ export default function LoginPage() {
 
         // Check if logged in via LINE
         if (isLoggedIn && profile) {
-          router.push("/")
+          // Check if user has completed profile setup
+          const { data: userProfile } = await supabase
+            .from("profiles")
+            .select("full_name, telephone")
+            .eq("line_user_id", profile.userId)
+            .single()
+
+          if (userProfile && userProfile.full_name && userProfile.telephone) {
+            router.push("/")
+          } else {
+            router.push("/profile?setup=true")
+          }
           return
         }
 
@@ -181,7 +192,7 @@ export default function LoginPage() {
                 <div className="w-full border-t border-white/20"></div>
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-[#6D3B3B] px-2 text-white/60">or continue with</span>
+                <span className="bg-[#6D3B3B] px-2 text-white/60">or continue with email</span>
               </div>
             </div>
           </div>
@@ -224,12 +235,13 @@ export default function LoginPage() {
                 </Label>
               </div>
 
-              <Link href="/forgot-password" className="text-sm text-white hover:underline">
-                Forgot Password?
-              </Link>
+              {userType === "user" && (
+                <Link href="/forgot-password" className="text-sm text-white hover:underline">
+                  Forgot Password?
+                </Link>
+              )}
             </div>
 
-            {/* Updated login button with black text and font size 20 */}
             <button
               type="submit"
               disabled={loading}
@@ -247,12 +259,14 @@ export default function LoginPage() {
           </div>
         </form>
 
-        <div className="mt-4 text-center text-sm text-white">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="hover:underline">
-            Register
-          </Link>
-        </div>
+        {userType === "user" && (
+          <div className="mt-4 text-center text-sm text-white">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="hover:underline">
+              Register
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   )
