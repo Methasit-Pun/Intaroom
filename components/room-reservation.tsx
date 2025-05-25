@@ -77,50 +77,82 @@ export default function RoomReservation() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Check if logged in via LINE (from localStorage)
+        // Check multiple login states
         const lineUserId = localStorage.getItem("lineUserId")
-        const isLineLoggedIn = !!lineUserId
+        const isLineLoggedIn = localStorage.getItem("isLineLoggedIn") === "true"
+        const storedCredits = localStorage.getItem("userCredits")
 
         // Check if logged in via Supabase
         const { data } = await supabase.auth.getSession()
         const isSupabaseLoggedIn = !!data.session
 
-        // User is logged in if either LINE or Supabase session exists
-        const isUserLoggedIn = isSupabaseLoggedIn || isLineLoggedIn || isLiffLoggedIn
+        // User is logged in if any of these conditions are true
+        const isUserLoggedIn = isSupabaseLoggedIn || isLineLoggedIn || isLiffLoggedIn || !!lineUserId
         setIsLoggedIn(isUserLoggedIn)
 
-        if (isUserLoggedIn) {
-          // If logged in via Supabase, fetch credits from there
-          if (isSupabaseLoggedIn && data.session) {
-            // Fetch user credits
-            const { data: profileData, error: profileError } = await supabase
-              .from("profiles")
-              .select("credits")
-              .eq("id", data.session.user.id)
-              .single()
+        console.log("Login state check:", {
+          isSupabaseLoggedIn,
+          isLineLoggedIn,
+          isLiffLoggedIn,
+          hasLineUserId: !!lineUserId,
+          finalLoginState: isUserLoggedIn,
+        })
 
-            if (!profileError && profileData) {
-              setUserCredits(profileData.credits || 0)
+        if (isUserLoggedIn) {
+          // Try to get credits from localStorage first (faster)
+          if (storedCredits) {
+            setUserCredits(Number.parseInt(storedCredits, 10) || 100)
+          }
+
+          // If logged in via Supabase, fetch credits from database
+          if (isSupabaseLoggedIn && data.session) {
+            try {
+              const { data: profileData, error: profileError } = await supabase
+                .from("profiles")
+                .select("credits")
+                .eq("id", data.session.user.id)
+                .single()
+
+              if (!profileError && profileData) {
+                const credits = profileData.credits || 100
+                setUserCredits(credits)
+                localStorage.setItem("userCredits", credits.toString())
+              }
+            } catch (err) {
+              console.error("Error fetching Supabase credits:", err)
             }
           }
-          // If logged in via LINE but not Supabase, fetch by LINE user ID
+          // If logged in via LINE, try to fetch by LINE user ID
           else if (lineUserId) {
-            const { data: lineUserData, error: lineUserError } = await supabase
-              .from("profiles")
-              .select("credits")
-              .eq("line_user_id", lineUserId)
-              .single()
+            try {
+              const { data: lineUserData, error: lineUserError } = await supabase
+                .from("profiles")
+                .select("credits")
+                .eq("line_user_id", lineUserId)
+                .single()
 
-            if (!lineUserError && lineUserData) {
-              setUserCredits(lineUserData.credits || 0)
-            } else {
-              // Default credits if not found
-              setUserCredits(100)
+              if (!lineUserError && lineUserData) {
+                const credits = lineUserData.credits || 100
+                setUserCredits(credits)
+                localStorage.setItem("userCredits", credits.toString())
+              }
+            } catch (err) {
+              console.error("Error fetching LINE user credits:", err)
+              // Use stored credits or default
+              setUserCredits(Number.parseInt(storedCredits || "100", 10))
             }
           }
         }
       } catch (error) {
         console.error("Session check error:", error)
+        // Fallback to localStorage values
+        const lineUserId = localStorage.getItem("lineUserId")
+        const storedCredits = localStorage.getItem("userCredits")
+
+        if (lineUserId) {
+          setIsLoggedIn(true)
+          setUserCredits(Number.parseInt(storedCredits || "100", 10))
+        }
       }
     }
 
@@ -275,6 +307,12 @@ export default function RoomReservation() {
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
+    // Check if user is logged in
+    if (!isLoggedIn) {
+      router.push("/login")
+      return
+    }
+
     // Format the selected date as YYYY-MM-DD in local timezone
     const formattedDate = formatDateForDatabase(selectedDate)
 
@@ -310,7 +348,7 @@ export default function RoomReservation() {
         <h1 className="text-xl font-semibold">
           <span className="text-[#D4AF37]">INTA</span>ROOM
         </h1>
-        {isLoggedIn && (
+        {isLoggedIn ? (
           <div className="flex gap-2 items-center">
             {/* Credits display */}
             <div className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-[#6D3B3B] rounded-full mr-1">
@@ -337,6 +375,13 @@ export default function RoomReservation() {
               <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
             </div>
           </div>
+        ) : (
+          <Button
+            onClick={() => router.push("/login")}
+            className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
+          >
+            Login
+          </Button>
         )}
       </div>
 
@@ -535,8 +580,10 @@ export default function RoomReservation() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Loading...
                 </>
-              ) : (
+              ) : isLoggedIn ? (
                 "Create a New Reservation"
+              ) : (
+                "Login to Create Reservation"
               )}
             </Button>
           </div>

@@ -80,6 +80,8 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         if (liffInstance.isLoggedIn()) {
           console.log("User is logged in with LINE")
           const lineProfile = await liffInstance.getProfile()
+          console.log("Authenticating with LINE profile:", lineProfile)
+
           setProfile({
             userId: lineProfile.userId,
             displayName: lineProfile.displayName,
@@ -87,8 +89,20 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
             email: liffInstance.getDecodedIDToken()?.email,
           })
 
-          // Authenticate with backend
-          await authenticateWithBackend(lineProfile)
+          // Store LINE user data in localStorage immediately
+          localStorage.setItem("lineUserId", lineProfile.userId)
+          localStorage.setItem("lineDisplayName", lineProfile.displayName)
+          localStorage.setItem("linePictureUrl", lineProfile.pictureUrl || "")
+          localStorage.setItem("isLineLoggedIn", "true")
+
+          // Authenticate with backend (non-blocking)
+          authenticateWithBackend(lineProfile).catch(console.error)
+
+          // Redirect to main page immediately
+          if (window.location.pathname === "/login") {
+            console.log("Redirecting to main page...")
+            window.location.href = "/"
+          }
         } else {
           console.log("User is not logged in with LINE")
         }
@@ -101,17 +115,15 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     initLiff()
   }, [liffId])
 
-  // Authenticate with backend
-  const authenticateWithBackend = async (lineProfile: any) => {
+  // Authenticate with backend (improved with retry logic)
+  const authenticateWithBackend = async (lineProfile: any, retryCount = 0) => {
+    const maxRetries = 3
+    const retryDelay = 1000 * Math.pow(2, retryCount) // Exponential backoff
+
     try {
-      console.log("Authenticating with LINE profile:", lineProfile)
+      console.log(`Authenticating with backend (attempt ${retryCount + 1})`)
 
-      // Store LINE user data in localStorage for immediate use
-      localStorage.setItem("lineUserId", lineProfile.userId)
-      localStorage.setItem("lineDisplayName", lineProfile.displayName)
-      localStorage.setItem("linePictureUrl", lineProfile.pictureUrl || "")
-
-      // Check if user exists in Supabase
+      // First, check if user already exists
       const { data: existingUser, error: userError } = await supabase
         .from("profiles")
         .select("*")
@@ -119,53 +131,91 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         .single()
 
       if (userError && userError.code !== "PGRST116") {
-        // Error other than "not found"
         console.error("Error checking user:", userError)
+        throw userError
       }
 
-      if (!existingUser) {
-        // Create a simple anonymous user with LINE data
-        const randomEmail = `line_${lineProfile.userId}_${Math.random().toString(36).substring(2)}@example.com`
-        const randomPassword = crypto.randomUUID()
+      if (existingUser) {
+        console.log("User already exists in database:", existingUser)
+        // User exists, just update localStorage with existing data
+        localStorage.setItem("userEmail", existingUser.email)
+        localStorage.setItem("userCredits", existingUser.credits?.toString() || "100")
+        return
+      }
 
-        console.log("Creating new user with LINE data")
+      // User doesn't exist, create new user
+      console.log("Creating new user with LINE data")
 
-        const { data: authUser, error: authError } = await supabase.auth.signUp({
-          email: randomEmail,
-          password: randomPassword,
-          options: {
-            data: {
+      // Generate a unique email and password
+      const timestamp = Date.now()
+      const randomSuffix = Math.random().toString(36).substring(2, 8)
+      const uniqueEmail = `line_${lineProfile.userId}_${timestamp}_${randomSuffix}@lineuser.local`
+      const password = `line_${lineProfile.userId}_${timestamp}`
+
+      const { data: authUser, error: authError } = await supabase.auth.signUp({
+        email: uniqueEmail,
+        password: password,
+        options: {
+          data: {
+            full_name: lineProfile.displayName,
+            line_user_id: lineProfile.userId,
+            avatar_url: lineProfile.pictureUrl,
+            username: `line_${lineProfile.userId}`,
+          },
+        },
+      })
+
+      if (authError) {
+        console.error("Error creating user:", authError)
+
+        // If it's a rate limit error, retry with exponential backoff
+        if (authError.message.includes("429") || authError.message.includes("rate") || retryCount < maxRetries) {
+          console.log(`Retrying in ${retryDelay}ms...`)
+          setTimeout(() => {
+            authenticateWithBackend(lineProfile, retryCount + 1)
+          }, retryDelay)
+          return
+        }
+
+        throw authError
+      }
+
+      if (authUser.user) {
+        console.log("User created successfully:", authUser.user.id)
+
+        // Store user data in localStorage
+        localStorage.setItem("userEmail", uniqueEmail)
+        localStorage.setItem("userCredits", "100")
+
+        // Try to update the profile with additional LINE data
+        try {
+          await supabase
+            .from("profiles")
+            .update({
               full_name: lineProfile.displayName,
               line_user_id: lineProfile.userId,
               avatar_url: lineProfile.pictureUrl,
-            },
-          },
-        })
-
-        if (authError) {
-          console.error("Error creating user:", authError)
-        } else {
-          console.log("User created successfully")
+              credits: 100,
+            })
+            .eq("id", authUser.user.id)
+        } catch (updateError) {
+          console.error("Error updating profile, but user was created:", updateError)
+          // Don't throw here, user creation was successful
         }
-      } else {
-        console.log("User already exists, signing in")
-
-        // User exists, just update the session
-        await supabase.auth
-          .signInWithPassword({
-            email: existingUser.email,
-            password: existingUser.line_user_id || "default_password",
-          })
-          .catch((err) => {
-            console.log("Error signing in existing user, creating session anyway:", err)
-            // Even if sign in fails, we'll continue with the LINE session
-          })
       }
-
-      // Force redirect to main page after successful LINE login
-      window.location.href = "/"
     } catch (err) {
       console.error("Error authenticating with backend:", err)
+
+      // Even if backend auth fails, we can still use LINE login
+      // Store minimal data for app functionality
+      localStorage.setItem("userCredits", "100")
+
+      if (retryCount < maxRetries) {
+        console.log(`Retrying authentication in ${retryDelay}ms...`)
+        setTimeout(() => {
+          authenticateWithBackend(lineProfile, retryCount + 1)
+        }, retryDelay)
+      }
     }
   }
 
@@ -182,9 +232,19 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
   const logout = async () => {
     if (!liff) return
 
-    if (liff.isLoggedIn()) {
+    try {
+      // Clear localStorage
+      localStorage.removeItem("lineUserId")
+      localStorage.removeItem("lineDisplayName")
+      localStorage.removeItem("linePictureUrl")
+      localStorage.removeItem("isLineLoggedIn")
+      localStorage.removeItem("userEmail")
+      localStorage.removeItem("userCredits")
+
       // Logout from LIFF
-      liff.logout()
+      if (liff.isLoggedIn()) {
+        liff.logout()
+      }
 
       // Logout from Supabase
       await supabase.auth.signOut()
@@ -193,7 +253,11 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
       setIsLoggedIn(false)
       setProfile(null)
 
-      // Reload page
+      // Redirect to login page
+      window.location.href = "/login"
+    } catch (error) {
+      console.error("Error during logout:", error)
+      // Force reload as fallback
       window.location.reload()
     }
   }
