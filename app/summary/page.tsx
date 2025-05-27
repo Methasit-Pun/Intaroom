@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,7 +50,6 @@ export default function SummaryPage() {
     attendees: false,
     reason: false,
   })
-  const attendeesInputRef = useRef<HTMLInputElement>(null)
   const MAX_REASON_LENGTH = 250
 
   const [bookingData, setBookingData] = useState({
@@ -144,11 +143,6 @@ export default function SummaryPage() {
     }
 
     loadData()
-
-    // Auto-focus on attendees input when component mounts
-    if (attendeesInputRef.current) {
-      attendeesInputRef.current.focus()
-    }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, supabase])
@@ -551,7 +545,6 @@ export default function SummaryPage() {
                 <div className="relative">
                   <Input
                     id="attendees"
-                    ref={attendeesInputRef}
                     type="number"
                     min={1}
                     placeholder="e.g. 12"
