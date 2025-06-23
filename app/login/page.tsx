@@ -85,7 +85,7 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    console.log("Login attempt:", { username, userType })
+    console.log("🔐 Login attempt started:", { username, userType, timestamp: new Date().toISOString() })
 
     try {
       if (userType === "admin") {
@@ -94,6 +94,7 @@ export default function LoginPage() {
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
+          console.log("✅ Admin login successful")
           router.push("/admin")
           return
         } else {
@@ -106,87 +107,145 @@ export default function LoginPage() {
 
         // If username doesn't contain @ symbol, look up the email by username
         if (!username.includes("@")) {
-          console.log("Looking up email for username:", username)
+          console.log("🔍 Looking up email for username:", username)
 
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("email, id, full_name, username")
-            .eq("username", username)
-            .single()
+          try {
+            const { data: profileData, error: profileError } = await supabase
+              .from("profiles")
+              .select("email, id, full_name, username")
+              .eq("username", username)
+              .single()
 
-          console.log("Profile lookup result:", { profileData, profileError })
+            console.log("📊 Profile lookup result:", {
+              profileData: profileData ? { ...profileData, email: profileData.email } : null,
+              profileError: profileError
+                ? {
+                    message: profileError.message,
+                    code: profileError.code,
+                    details: profileError.details,
+                  }
+                : null,
+            })
 
-          if (profileError) {
-            console.error("Profile lookup error:", profileError)
-            throw new Error("Username not found. Please check your username or register a new account.")
+            if (profileError) {
+              console.error("❌ Profile lookup error:", profileError)
+
+              if (profileError.code === "PGRST116") {
+                throw new Error("Username not found. Please check your username or register a new account.")
+              } else if (profileError.message.includes("permission denied")) {
+                throw new Error("Database access error. Please contact support.")
+              } else {
+                throw new Error(`Profile lookup failed: ${profileError.message}`)
+              }
+            }
+
+            if (!profileData) {
+              throw new Error("Username not found. Please check your username or register a new account.")
+            }
+
+            email = profileData.email
+            userProfile = profileData
+            console.log("✅ Found email for username:", email)
+          } catch (lookupError: any) {
+            console.error("❌ Username lookup failed:", lookupError)
+            throw lookupError
           }
-
-          if (!profileData) {
-            throw new Error("Username not found. Please check your username or register a new account.")
-          }
-
-          email = profileData.email
-          userProfile = profileData
-          console.log("Found email for username:", email)
         }
 
         // Now login with the email
-        console.log("Attempting Supabase login with email:", email)
+        console.log("🔑 Attempting Supabase authentication with email:", email)
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
-        })
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password,
+          })
 
-        console.log("Supabase login result:", { data, error })
+          // Detailed error logging
+          console.log("🔐 Supabase auth result:", {
+            success: !!data.user,
+            userId: data.user?.id,
+            userEmail: data.user?.email,
+            emailConfirmed: data.user?.email_confirmed_at,
+            error: error
+              ? {
+                  message: error.message,
+                  status: error.status,
+                  name: error.name,
+                }
+              : null,
+            session: !!data.session,
+          })
 
-        if (error) {
-          console.error("Supabase login error:", error)
+          if (error) {
+            console.error("❌ Supabase authentication error:", {
+              message: error.message,
+              status: error.status,
+              name: error.name,
+              stack: error.stack,
+            })
 
-          // Provide more specific error messages
-          if (error.message.includes("Invalid login credentials")) {
-            throw new Error("Invalid username or password. Please check your credentials and try again.")
-          } else if (error.message.includes("Email not confirmed")) {
-            throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
-          } else {
-            throw new Error(error.message || "Login failed. Please try again.")
+            // Provide more specific error messages based on error type
+            if (error.message.includes("Invalid login credentials")) {
+              throw new Error("Invalid username or password. Please check your credentials and try again.")
+            } else if (error.message.includes("Email not confirmed")) {
+              throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+            } else if (error.message.includes("Too many requests")) {
+              throw new Error("Too many login attempts. Please wait a few minutes before trying again.")
+            } else if (error.message.includes("User not found")) {
+              throw new Error("Account not found. Please check your credentials or register a new account.")
+            } else if (error.status === 400) {
+              throw new Error("Invalid request. Please check your username and password format.")
+            } else if (error.status === 422) {
+              throw new Error("Invalid email format. Please use a valid email address.")
+            } else {
+              throw new Error(`Authentication failed: ${error.message}`)
+            }
           }
-        }
 
-        if (data.user) {
-          console.log("Login successful, user:", data.user.id)
+          if (!data.user) {
+            throw new Error("Login failed. No user data received from authentication service.")
+          }
+
+          console.log("✅ Authentication successful for user:", data.user.id)
 
           // Check if email is verified for user accounts
           if (!data.user.email_confirmed_at) {
-            await supabase.auth.signOut() // Sign out the unverified user
+            console.warn("⚠️ User email not confirmed, signing out")
+            await supabase.auth.signOut()
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
           // Store user info in localStorage for quick access
           if (userProfile) {
-            localStorage.setItem(
-              "currentUser",
-              JSON.stringify({
-                id: data.user.id,
-                email: data.user.email,
-                username: userProfile.username,
-                full_name: userProfile.full_name,
-              }),
-            )
+            const userData = {
+              id: data.user.id,
+              email: data.user.email,
+              username: userProfile.username,
+              full_name: userProfile.full_name,
+            }
+            localStorage.setItem("currentUser", JSON.stringify(userData))
+            console.log("💾 User data stored in localStorage:", userData)
           }
 
-          console.log("Redirecting to main page")
+          console.log("🎉 Login successful, redirecting to main page")
           // Successful login - redirect to main page
           router.push("/")
-        } else {
-          throw new Error("Login failed. No user data received.")
+        } catch (authError: any) {
+          console.error("❌ Authentication process failed:", authError)
+          throw authError
         }
       }
     } catch (error: any) {
-      console.error("Login error:", error)
+      console.error("❌ Overall login error:", {
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+      })
       setError(error.message || "Failed to login. Please try again.")
     } finally {
       setLoading(false)
+      console.log("🏁 Login attempt completed")
     }
   }
 
@@ -205,7 +264,10 @@ export default function LoginPage() {
         {error && (
           <div className="bg-red-500/20 border border-red-500 text-white p-3 rounded-lg mb-4 text-sm flex items-start gap-2">
             <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <p>{error}</p>
+            <div>
+              <p className="font-medium">Login Failed</p>
+              <p className="mt-1">{error}</p>
+            </div>
           </div>
         )}
 
@@ -321,8 +383,9 @@ export default function LoginPage() {
         {/* Debug info in development */}
         {process.env.NODE_ENV === "development" && (
           <div className="mt-4 p-3 bg-black/20 rounded-lg text-xs text-white/70">
-            <p>Debug: Username lookup and Supabase auth enabled</p>
-            <p>Test with username: MB, password: abc123</p>
+            <p>🔧 Debug Mode: Detailed logging enabled</p>
+            <p>📊 Check browser console for authentication details</p>
+            <p>🧪 Test credentials: MB / abc123</p>
           </div>
         )}
       </div>
