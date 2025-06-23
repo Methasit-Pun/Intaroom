@@ -1,20 +1,10 @@
--- Add username column to profiles table if it doesn't exist
-ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS username TEXT UNIQUE;
+-- Add username column to profiles table
+ALTER TABLE profiles ADD COLUMN username TEXT;
 
--- Update the handle_new_user function to include username
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, full_name, email, role, email_verified, username)
-  VALUES (
-    new.id, 
-    COALESCE(new.raw_user_meta_data->>'full_name', ''), 
-    new.email, 
-    'user', 
-    false, 
-    COALESCE(new.raw_user_meta_data->>'username', new.email)
-  );
-  RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- Update existing profiles with a default username based on their email
+UPDATE profiles 
+SET username = SUBSTRING(email FROM 1 FOR POSITION('@' IN email) - 1)
+WHERE username IS NULL AND email IS NOT NULL;
+
+-- Add a unique constraint to username
+ALTER TABLE profiles ADD CONSTRAINT profiles_username_unique UNIQUE (username);

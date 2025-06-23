@@ -4,14 +4,11 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2 } from "lucide-react"
-import LineLoginButton from "@/components/line-login-button"
-import { useLiff } from "@/components/liff-provider"
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -23,13 +20,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [userType, setUserType] = useState<"user" | "admin">("user")
   const [verificationSuccess, setVerificationSuccess] = useState(false)
-  const { isLoggedIn, profile } = useLiff()
-
-  // Initialize Supabase client with explicit URL and key
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const [checkingSession, setCheckingSession] = useState(true)
 
   // Check for verification success parameter
   useEffect(() => {
@@ -39,45 +30,49 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Check if already logged in
+  // Check for existing session
   useEffect(() => {
     const checkSession = async () => {
       try {
+        setCheckingSession(true)
+
         // Check if admin is already logged in via localStorage
-        if (localStorage.getItem("isAdmin") === "true") {
+        if (typeof window !== "undefined" && localStorage.getItem("isAdmin") === "true") {
+          console.log("Admin is already logged in, redirecting to /admin")
           router.push("/admin")
           return
         }
 
-        // Check if logged in via LINE
-        if (isLoggedIn && profile) {
-          // Check if user has completed profile setup
-          const { data: userProfile } = await supabase
-            .from("profiles")
-            .select("full_name, telephone")
-            .eq("line_user_id", profile.userId)
-            .single()
+        // For regular users, check Supabase session
+        const supabase = getSupabaseClient()
+        try {
+          const { data, error } = await supabase.auth.getSession()
 
-          if (userProfile && userProfile.full_name && userProfile.telephone) {
+          if (error) {
+            console.error("Session error during check:", error)
+            setCheckingSession(false)
+            return // Stay on login page
+          }
+
+          if (data.session) {
+            console.log("User is already logged in, redirecting to /")
             router.push("/")
           } else {
-            router.push("/profile?setup=true")
+            console.log("No active session found")
+            setCheckingSession(false)
           }
-          return
-        }
-
-        // For regular users, check Supabase session
-        const { data } = await supabase.auth.getSession()
-        if (data.session) {
-          router.push("/")
+        } catch (error) {
+          console.error("Error checking session:", error)
+          setCheckingSession(false)
         }
       } catch (error) {
         console.error("Session check error:", error)
+        setCheckingSession(false)
       }
     }
 
     checkSession()
-  }, [router, supabase, isLoggedIn, profile])
+  }, [router])
 
   // Handle login with separate flows for admin and regular users
   const handleLogin = async (e: React.FormEvent) => {
@@ -88,7 +83,6 @@ export default function LoginPage() {
     try {
       if (userType === "admin") {
         // Admin login - completely bypass Supabase auth
-        // Check hardcoded admin credentials
         if (username === "admin1" && password === "admin123") {
           // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
@@ -99,32 +93,29 @@ export default function LoginPage() {
 
           // Redirect to admin page
           router.push("/admin")
+          return
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
-        // Regular user login - first check if input is an email or username
-        let email = username
+        // Regular user login - use Supabase authentication
+        const supabase = getSupabaseClient()
 
-        // If username doesn't contain @ symbol, look up the email by username
-        if (!username.includes("@")) {
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("email")
-            .eq("username", username)
-            .single()
+        // First, get the email associated with the username
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, email")
+          .eq("username", username)
+          .single()
 
-          if (profileError || !profileData) {
-            throw new Error("Username not found")
-          }
-
-          email = profileData.email
+        if (profileError || !profileData) {
+          throw new Error("Username not found. Please check your username and try again.")
         }
 
-        // Now login with the email
+        // Now sign in with the email and password
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
+          email: profileData.email,
+          password,
         })
 
         if (error) throw error
@@ -135,15 +126,31 @@ export default function LoginPage() {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          // Regular user
+          // Store a flag in localStorage to indicate successful login
+          localStorage.setItem("userLoggedIn", "true")
+
+          // Redirect to home page
           router.push("/")
+          return
         }
       }
     } catch (error: any) {
+      console.error("Login error:", error)
       setError(error.message || "Failed to login")
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white mb-4" />
+          <p className="text-white">Checking authentication status...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -184,26 +191,12 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {userType === "user" && (
-          <div className="mb-6">
-            <LineLoginButton />
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/20"></div>
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-[#6D3B3B] px-2 text-white/60">or continue with email</span>
-              </div>
-            </div>
-          </div>
-        )}
-
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
             <div>
               <input
                 type="text"
-                placeholder={userType === "admin" ? "Admin Username" : "Username or Email"}
+                placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
@@ -235,11 +228,9 @@ export default function LoginPage() {
                 </Label>
               </div>
 
-              {userType === "user" && (
-                <Link href="/forgot-password" className="text-sm text-white hover:underline">
-                  Forgot Password?
-                </Link>
-              )}
+              <Link href="/forgot-password" className="text-sm text-white hover:underline">
+                Forgot Password?
+              </Link>
             </div>
 
             <button
@@ -259,14 +250,12 @@ export default function LoginPage() {
           </div>
         </form>
 
-        {userType === "user" && (
-          <div className="mt-4 text-center text-sm text-white">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="hover:underline">
-              Register
-            </Link>
-          </div>
-        )}
+        <div className="mt-4 text-center text-sm text-white">
+          Don&apos;t have an account?{" "}
+          <Link href="/register" className="hover:underline">
+            Register
+          </Link>
+        </div>
       </div>
     </div>
   )

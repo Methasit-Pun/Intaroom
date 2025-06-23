@@ -49,6 +49,26 @@ export default function RegisterPage() {
       return
     }
 
+    // Check if username already exists
+    try {
+      const { data: existingUser, error: usernameCheckError } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", username)
+        .single()
+
+      if (existingUser) {
+        setError("Username already exists. Please choose a different username.")
+        return
+      }
+    } catch (error) {
+      // If error is not found, that's good - username is available
+      // Otherwise, log the error but continue (we'll catch other errors later)
+      if (error instanceof Error && !error.message.includes("No rows found")) {
+        console.error("Username check error:", error)
+      }
+    }
+
     setLoading(true)
 
     try {
@@ -60,7 +80,7 @@ export default function RegisterPage() {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
-            username: username,
+            username: username, // Store username in auth metadata
           },
         },
       })
@@ -75,7 +95,7 @@ export default function RegisterPage() {
           {
             id: data.user.id,
             full_name: fullName,
-            username: username,
+            username: username, // Now we can include username
             role: "user", // Always set to "user"
             email: email,
           },
@@ -101,8 +121,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
-      <div className="w-full max-w-md p-6 rounded-3xl bg-[#6D3B3B]">
+    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] px-4">
+      <div className="w-full max-w-sm p-6 rounded-3xl bg-[#6D3B3B]">
         <h1 className="text-2xl font-semibold text-white text-center mb-6">Register</h1>
 
         {error && (
@@ -131,7 +151,7 @@ export default function RegisterPage() {
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
               />
-              <p className="text-xs text-white/70 mt-1 ml-2">Choose a unique username for login</p>
+              <p className="text-xs text-white/70 mt-1 ml-2">This will be used to log in to your account</p>
             </div>
 
             <div>

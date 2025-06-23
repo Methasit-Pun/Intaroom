@@ -17,18 +17,11 @@ export default function BookingNameModal({ isOpen, onClose, onConfirm }: Booking
   const handleConfirm = () => {
     if (bookingName.trim()) {
       onConfirm(bookingName)
-      setBookingName("") // Reset the input after confirmation
-    }
-  }
-
-  const handleDialogChange = (open: boolean) => {
-    if (!open) {
-      onClose()
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleDialogChange}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-white p-0 rounded-xl overflow-hidden w-[90%] max-w-md border-0">
         <DialogHeader className="p-4 bg-gray-100 border-b border-gray-200">
           <DialogTitle className="text-center text-gray-800 font-medium">Booking Name</DialogTitle>

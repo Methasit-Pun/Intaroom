@@ -2,22 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import {
-  Search,
-  Filter,
-  CheckCircle,
-  XCircle,
-  ChevronDown,
-  Calendar,
-  Clock,
-  User,
-  Home,
-  Loader2,
-  Ban,
-  ArrowUpDown,
-  Mail,
-  Phone,
-} from "lucide-react"
+import { Search, Filter, CheckCircle, XCircle, ChevronDown, Calendar, Clock, User, Home, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -34,11 +19,9 @@ import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Line, Bar, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+// Update the Supabase client initialization to use the singleton pattern
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 // Type for reservation data
 interface Reservation {
@@ -56,7 +39,6 @@ interface Reservation {
   contact_phone?: string
   user_name?: string
   room_name?: string
-  created_at?: string
 }
 
 // Type for grouped reservation data
@@ -74,32 +56,6 @@ interface GroupedReservation {
   contact_phone?: string
   user_name?: string
   room_name?: string
-  created_at?: string
-}
-
-// Type for user data
-interface UserType {
-  id: string
-  email: string
-  full_name?: string
-  phone?: string
-  is_banned?: boolean
-  ban_reason?: string
-  ban_until?: string
-}
-
-// Type for room usage analytics
-interface RoomUsage {
-  room_id: number
-  room_name: string
-  count: number
-  dates: { date: string; count: number }[]
-}
-
-// Type for time slot analytics
-interface TimeSlotUsage {
-  hour: string
-  count: number
 }
 
 export default function AdminPage() {
@@ -107,47 +63,23 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [currentTab, setCurrentTab] = useState("all")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     ids: number[] | null
     action: "approve" | "reject" | null
   }>({ open: false, ids: null, action: null })
-  const [banDialog, setBanDialog] = useState<{
-    open: boolean
-    userId: string | null
-    userName: string | null
-    type: "temporary" | "permanent" | null
-  }>({ open: false, userId: null, userName: null, type: null })
-  const [banReason, setBanReason] = useState("")
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [groupedReservations, setGroupedReservations] = useState<GroupedReservation[]>([])
-  const [users, setUsers] = useState<UserType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
-  const [analyticsTimeFrame, setAnalyticsTimeFrame] = useState<"day" | "week" | "month">("week")
-  const [analyticsData, setAnalyticsData] = useState<{
-    roomUsage: RoomUsage[]
-    timeSlotUsage: TimeSlotUsage[]
-    totalReservations: number
-    pendingReservations: number
-    approvedReservations: number
-    rejectedReservations: number
-  }>({
-    roomUsage: [],
-    timeSlotUsage: [],
-    totalReservations: 0,
-    pendingReservations: 0,
-    approvedReservations: 0,
-    rejectedReservations: 0,
-  })
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  // const supabase = createClientComponentClient({
+  //   supabaseUrl,
+  //   supabaseKey: supabaseAnonKey,
+  // })
+  const supabase = getSupabaseClient()
 
   // Check if user is authenticated as admin
   useEffect(() => {
@@ -162,9 +94,8 @@ export default function AdminPage() {
           return
         }
 
-        // If admin, fetch reservations and users
+        // If admin, fetch reservations
         fetchReservations()
-        fetchUsers()
       } catch (error) {
         console.error("Auth check error:", error)
       }
@@ -172,13 +103,6 @@ export default function AdminPage() {
 
     checkAuth()
   }, [router])
-
-  // Update analytics when reservations change
-  useEffect(() => {
-    if (reservations.length > 0) {
-      generateAnalytics()
-    }
-  }, [reservations, analyticsTimeFrame])
 
   // Group reservations by confirmation number base AND date
   useEffect(() => {
@@ -207,7 +131,6 @@ export default function AdminPage() {
             contact_phone: reservation.contact_phone,
             user_name: reservation.user_name,
             room_name: reservation.room_name,
-            created_at: reservation.created_at,
           }
         } else {
           grouped[groupKey].ids.push(reservation.id)
@@ -234,17 +157,9 @@ export default function AdminPage() {
         })
       })
 
-      // Sort by date according to sortDirection
-      const groupedArray = Object.values(grouped)
-      groupedArray.sort((a, b) => {
-        const dateA = new Date(a.date).getTime()
-        const dateB = new Date(b.date).getTime()
-        return sortDirection === "asc" ? dateA - dateB : dateB - dateA
-      })
-
-      setGroupedReservations(groupedArray)
+      setGroupedReservations(Object.values(grouped))
     }
-  }, [reservations, sortDirection])
+  }, [reservations])
 
   // Fetch reservations from Supabase
   const fetchReservations = async () => {
@@ -271,6 +186,8 @@ export default function AdminPage() {
         throw reservationsError
       }
 
+      console.log("Fetched reservations:", reservationsData)
+
       // Fetch room names and user names
       const enhancedReservations = await Promise.all(
         (reservationsData || []).map(async (reservation) => {
@@ -285,7 +202,7 @@ export default function AdminPage() {
             // Get user name
             const { data: userData } = await supabase
               .from("profiles")
-              .select("full_name, email, phone")
+              .select("full_name, email")
               .eq("id", reservation.user_id)
               .single()
 
@@ -293,8 +210,6 @@ export default function AdminPage() {
               ...reservation,
               room_name: roomData?.name || `Room ${reservation.room_id}`,
               user_name: userData?.full_name || userData?.email || "Unknown User",
-              contact_email: userData?.email || reservation.contact_email,
-              contact_phone: userData?.phone || reservation.contact_phone,
             }
           } catch (error) {
             console.error("Error fetching related data:", error)
@@ -307,6 +222,7 @@ export default function AdminPage() {
         }),
       )
 
+      console.log("Enhanced reservations:", enhancedReservations)
       setReservations(enhancedReservations)
     } catch (error: any) {
       console.error("Error fetching reservations:", error)
@@ -316,121 +232,6 @@ export default function AdminPage() {
     }
   }
 
-  // Fetch users from Supabase
-  const fetchUsers = async () => {
-    try {
-      const supabase = createClientComponentClient({
-        supabaseUrl,
-        supabaseKey: supabaseAnonKey,
-      })
-
-      const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("*")
-
-      if (profilesError) {
-        console.error("Error fetching profiles:", profilesError)
-        throw profilesError
-      }
-
-      setUsers(profilesData || [])
-    } catch (error) {
-      console.error("Error fetching users:", error)
-    }
-  }
-
-  // Generate analytics data
-  const generateAnalytics = () => {
-    // Determine date range based on timeframe
-    const now = new Date()
-    const startDate = new Date()
-
-    if (analyticsTimeFrame === "day") {
-      startDate.setDate(now.getDate() - 1)
-    } else if (analyticsTimeFrame === "week") {
-      startDate.setDate(now.getDate() - 7)
-    } else if (analyticsTimeFrame === "month") {
-      startDate.setMonth(now.getMonth() - 1)
-    }
-
-    const filteredReservations = reservations.filter((res) => {
-      const resDate = new Date(res.date)
-      return resDate >= startDate && resDate <= now
-    })
-
-    // Room usage data
-    const roomUsageMap = new Map<number, { name: string; count: number; dates: Map<string, number> }>()
-
-    filteredReservations.forEach((res) => {
-      if (!roomUsageMap.has(res.room_id)) {
-        roomUsageMap.set(res.room_id, {
-          name: res.room_name || `Room ${res.room_id}`,
-          count: 1,
-          dates: new Map([[res.date, 1]]),
-        })
-      } else {
-        const roomData = roomUsageMap.get(res.room_id)!
-        roomData.count++
-
-        if (roomData.dates.has(res.date)) {
-          roomData.dates.set(res.date, roomData.dates.get(res.date)! + 1)
-        } else {
-          roomData.dates.set(res.date, 1)
-        }
-      }
-    })
-
-    const roomUsage = Array.from(roomUsageMap.entries()).map(([id, data]) => ({
-      room_id: id,
-      room_name: data.name,
-      count: data.count,
-      dates: Array.from(data.dates.entries()).map(([date, count]) => ({
-        date,
-        count,
-      })),
-    }))
-
-    // Time slot usage data
-    const timeSlotMap = new Map<string, number>()
-
-    filteredReservations.forEach((res) => {
-      const hour = res.start_time.split(":")[0]
-      const timeKey = `${hour}:00`
-
-      if (timeSlotMap.has(timeKey)) {
-        timeSlotMap.set(timeKey, timeSlotMap.get(timeKey)! + 1)
-      } else {
-        timeSlotMap.set(timeKey, 1)
-      }
-    })
-
-    const timeSlotUsage = Array.from(timeSlotMap.entries())
-      .map(([hour, count]) => ({ hour, count }))
-      .sort((a, b) => {
-        const hourA = Number.parseInt(a.hour)
-        const hourB = Number.parseInt(b.hour)
-        return hourA - hourB
-      })
-
-    // Count by status
-    const totalReservations = filteredReservations.length
-    const pendingReservations = filteredReservations.filter((r) => r.status === "Pending").length
-    const approvedReservations = filteredReservations.filter((r) => r.status === "Approved").length
-    const rejectedReservations = filteredReservations.filter((r) => r.status === "Rejected").length
-
-    setAnalyticsData({
-      roomUsage,
-      timeSlotUsage,
-      totalReservations,
-      pendingReservations,
-      approvedReservations,
-      rejectedReservations,
-    })
-  }
-
-  // Handle toggle sort direction
-  const toggleSortDirection = () => {
-    setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
-  }
-
   // Filter reservations based on search term and status filter
   const filteredReservations = groupedReservations.filter((reservation) => {
     const matchesSearch =
@@ -438,8 +239,6 @@ export default function AdminPage() {
       reservation.room_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       reservation.date.includes(searchTerm) ||
       reservation.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.contact_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.contact_phone?.includes(searchTerm) ||
       reservation.purpose.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === "All" || reservation.status === statusFilter
@@ -448,8 +247,7 @@ export default function AdminPage() {
       currentTab === "all" ||
       (currentTab === "pending" && reservation.status === "Pending") ||
       (currentTab === "approved" && reservation.status === "Approved") ||
-      (currentTab === "rejected" && reservation.status === "Rejected") ||
-      currentTab === "analytics"
+      (currentTab === "rejected" && reservation.status === "Rejected")
 
     return matchesSearch && matchesStatus && matchesTab
   })
@@ -492,58 +290,6 @@ export default function AdminPage() {
     } catch (error: any) {
       console.error("Error updating reservation:", error)
       setError(error.message || "Failed to update reservation")
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  // Handle ban user action
-  const handleBanUser = (userId: string, userName: string, type: "temporary" | "permanent") => {
-    setBanDialog({
-      open: true,
-      userId,
-      userName,
-      type,
-    })
-    setBanReason("")
-  }
-
-  const confirmBanUser = async () => {
-    if (!banDialog.userId || !banDialog.type) return
-
-    setActionLoading(true)
-
-    try {
-      const supabase = createClientComponentClient({
-        supabaseUrl,
-        supabaseKey: supabaseAnonKey,
-      })
-
-      const banUntil =
-        banDialog.type === "temporary"
-          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 1 month
-          : null
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          is_banned: true,
-          ban_reason: banReason,
-          ban_until: banUntil,
-        })
-        .eq("id", banDialog.userId)
-
-      if (error) throw error
-
-      // Refresh users list
-      await fetchUsers()
-
-      // Close dialog
-      setBanDialog({ open: false, userId: null, userName: null, type: null })
-      setBanReason("")
-    } catch (error: any) {
-      console.error("Error banning user:", error)
-      setError(error.message || "Failed to ban user")
     } finally {
       setActionLoading(false)
     }
@@ -605,9 +351,9 @@ export default function AdminPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 p-4">
+      <div className="flex-1 p-4 md:p-6 lg:p-8">
         {error && (
-          <div className="max-w-6xl mx-auto mb-4 bg-red-500/20 border border-red-500 text-white p-3 rounded-lg">
+          <div className="max-w-7xl mx-auto mb-4 bg-red-500/20 border border-red-500 text-white p-3 rounded-lg">
             {error}
             <Button variant="link" className="text-white underline ml-2" onClick={fetchReservations}>
               Try Again
@@ -615,11 +361,11 @@ export default function AdminPage() {
           </div>
         )}
 
-        <div className="bg-gray-200 rounded-xl overflow-hidden shadow-md text-gray-800 max-w-[1800px] mx-auto">
+        <div className="bg-gray-200 rounded-xl overflow-hidden shadow-md text-gray-800 max-w-7xl mx-auto">
           {/* Tabs */}
           <Tabs defaultValue="all" className="w-full" onValueChange={setCurrentTab}>
             <div className="bg-gray-300 p-3">
-              <TabsList className="grid grid-cols-5 bg-gray-100">
+              <TabsList className="grid grid-cols-4 bg-gray-100">
                 <TabsTrigger value="all" className="data-[state=active]:bg-[#5A0D16] data-[state=active]:text-white">
                   All
                 </TabsTrigger>
@@ -641,12 +387,6 @@ export default function AdminPage() {
                 >
                   Rejected
                 </TabsTrigger>
-                <TabsTrigger
-                  value="analytics"
-                  className="data-[state=active]:bg-[#5A0D16] data-[state=active]:text-white"
-                >
-                  Analytics
-                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -654,13 +394,10 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
-                onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 statusFilter={statusFilter}
                 setStatusFilter={setStatusFilter}
-                sortDirection={sortDirection}
-                toggleSortDirection={toggleSortDirection}
                 loading={loading}
                 formatDate={formatDate}
                 formatTimeSlots={formatTimeSlots}
@@ -671,13 +408,10 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
-                onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 statusFilter="Pending"
                 setStatusFilter={setStatusFilter}
-                sortDirection={sortDirection}
-                toggleSortDirection={toggleSortDirection}
                 loading={loading}
                 formatDate={formatDate}
                 formatTimeSlots={formatTimeSlots}
@@ -688,13 +422,10 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
-                onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 statusFilter="Approved"
                 setStatusFilter={setStatusFilter}
-                sortDirection={sortDirection}
-                toggleSortDirection={toggleSortDirection}
                 loading={loading}
                 formatDate={formatDate}
                 formatTimeSlots={formatTimeSlots}
@@ -705,238 +436,14 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
-                onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 statusFilter="Rejected"
                 setStatusFilter={setStatusFilter}
-                sortDirection={sortDirection}
-                toggleSortDirection={toggleSortDirection}
                 loading={loading}
                 formatDate={formatDate}
                 formatTimeSlots={formatTimeSlots}
               />
-            </TabsContent>
-
-            <TabsContent value="analytics" className="m-0 p-6 bg-gray-100">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Room Usage Analytics</h2>
-                <Select
-                  value={analyticsTimeFrame}
-                  onValueChange={(value) => setAnalyticsTimeFrame(value as "day" | "week" | "month")}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Select time frame" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Last 24 Hours</SelectItem>
-                    <SelectItem value="week">Last Week</SelectItem>
-                    <SelectItem value="month">Last Month</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Analytics Dashboard */}
-              <div className="grid grid-cols-4 gap-4 mb-6">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Total Reservations</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{analyticsData.totalReservations}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-yellow-700">Pending</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{analyticsData.pendingReservations}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-green-700">Approved</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{analyticsData.approvedReservations}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-red-700">Rejected</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{analyticsData.rejectedReservations}</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                {/* Room Usage Chart */}
-                <Card className="w-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle>Room Usage</CardTitle>
-                    <CardDescription>Number of reservations per room</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analyticsData.roomUsage} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="room_name" angle={-45} textAnchor="end" height={70} />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="#5A0D16" name="Reservations" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                {/* Time Slot Usage Chart */}
-                <Card className="w-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle>Popular Time Slots</CardTitle>
-                    <CardDescription>Most frequently reserved time slots</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={analyticsData.timeSlotUsage}
-                        margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="hour" />
-                        <YAxis />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="count" stroke="#D4AF37" strokeWidth={2} name="Reservations" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                {/* Room Details Table */}
-                <Card className="w-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle>Room Usage Details</CardTitle>
-                    <CardDescription>Detailed breakdown of room reservations</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">Room</th>
-                            <th className="text-left p-2">Total Reservations</th>
-                            <th className="text-left p-2">Most Reserved Day</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {analyticsData.roomUsage.map((room) => {
-                            // Find most popular day
-                            let mostPopularDay = { date: "", count: 0 }
-                            room.dates.forEach((day) => {
-                              if (day.count > mostPopularDay.count) {
-                                mostPopularDay = day
-                              }
-                            })
-
-                            return (
-                              <tr key={room.room_id} className="border-b hover:bg-gray-50">
-                                <td className="p-2">{room.room_name}</td>
-                                <td className="p-2">{room.count}</td>
-                                <td className="p-2">
-                                  {mostPopularDay.date ? formatDate(mostPopularDay.date) : "N/A"}
-                                  {mostPopularDay.count > 0 && ` (${mostPopularDay.count} reservations)`}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                          {analyticsData.roomUsage.length === 0 && (
-                            <tr>
-                              <td colSpan={3} className="p-4 text-center text-gray-500">
-                                No data available
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* User Management Section */}
-                <Card className="w-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle>User Management</CardTitle>
-                    <CardDescription>View and manage user accounts</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-4">
-                      <Input placeholder="Search users by name or email..." className="max-w-md" />
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">User</th>
-                            <th className="text-left p-2">Email</th>
-                            <th className="text-left p-2">Phone</th>
-                            <th className="text-left p-2">Status</th>
-                            <th className="text-left p-2">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {users.slice(0, 5).map((user) => (
-                            <tr key={user.id} className="border-b hover:bg-gray-50">
-                              <td className="p-2">{user.full_name || "N/A"}</td>
-                              <td className="p-2">{user.email}</td>
-                              <td className="p-2">{user.phone || "N/A"}</td>
-                              <td className="p-2">
-                                {user.is_banned ? (
-                                  <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">
-                                    Banned {user.ban_until ? `until ${formatDate(user.ban_until)}` : "permanently"}
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                                    Active
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2">
-                                {!user.is_banned && (
-                                  <div className="flex gap-2 flex-wrap">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
-                                      onClick={() => handleBanUser(user.id, user.full_name || user.email, "temporary")}
-                                    >
-                                      <Ban className="h-3 w-3 mr-1" />
-                                      1-Month Ban
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="text-red-600 border-red-600 hover:bg-red-50"
-                                      onClick={() => handleBanUser(user.id, user.full_name || user.email, "permanent")}
-                                    >
-                                      <Ban className="h-3 w-3 mr-1" />
-                                      Permanent Ban
-                                    </Button>
-                                  </div>
-                                )}
-                                {user.is_banned && <span className="text-sm text-gray-500 italic">Already banned</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
             </TabsContent>
           </Tabs>
         </div>
@@ -984,60 +491,6 @@ export default function AdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Ban User Dialog */}
-      <Dialog open={banDialog.open} onOpenChange={(open) => setBanDialog((prev) => ({ ...prev, open }))}>
-        <DialogContent className="bg-white text-gray-800 max-w-md">
-          <DialogHeader>
-            <DialogTitle>{banDialog.type === "temporary" ? "Temporary Ban (1 Month)" : "Permanent Ban"}</DialogTitle>
-            <DialogDescription>
-              You are about to {banDialog.type === "temporary" ? "temporarily ban" : "permanently ban"} user:{" "}
-              <strong>{banDialog.userName}</strong>
-              {banDialog.type === "temporary" ? " for 1 month." : "."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 my-2">
-            <div className="space-y-2">
-              <Label htmlFor="ban-reason">Reason for ban (required)</Label>
-              <Textarea
-                id="ban-reason"
-                placeholder="Please provide a reason for this ban..."
-                value={banReason}
-                onChange={(e) => setBanReason(e.target.value)}
-                className="min-h-[100px]"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="flex gap-2 sm:justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setBanDialog({ open: false, userId: null, userName: null, type: null })}
-              disabled={actionLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={confirmBanUser}
-              disabled={actionLoading || !banReason.trim()}
-            >
-              {actionLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Ban className="h-4 w-4 mr-2" />
-                  Confirm Ban
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -1045,13 +498,10 @@ export default function AdminPage() {
 interface ReservationTableProps {
   reservations: GroupedReservation[]
   onAction: (ids: number[], action: "approve" | "reject") => void
-  onBanUser: (userId: string, userName: string, type: "temporary" | "permanent") => void
   searchTerm: string
   setSearchTerm: (term: string) => void
   statusFilter: string
   setStatusFilter: (filter: string) => void
-  sortDirection: "asc" | "desc"
-  toggleSortDirection: () => void
   loading: boolean
   formatDate: (date: string) => string
   formatTimeSlots: (timeSlots: { start_time: string; end_time: string }[]) => string
@@ -1060,13 +510,10 @@ interface ReservationTableProps {
 function ReservationTable({
   reservations,
   onAction,
-  onBanUser,
   searchTerm,
   setSearchTerm,
   statusFilter,
   setStatusFilter,
-  sortDirection,
-  toggleSortDirection,
   loading,
   formatDate,
   formatTimeSlots,
@@ -1078,51 +525,45 @@ function ReservationTable({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
           <Input
-            placeholder="Search by name, room, email, phone, or purpose..."
+            placeholder="Search by name, room, or purpose..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 bg-white border-gray-300"
           />
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="bg-white border-gray-300 flex gap-1" onClick={toggleSortDirection}>
-            <ArrowUpDown className="h-4 w-4" />
-            {sortDirection === "asc" ? "Oldest First" : "Newest First"}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex gap-2 bg-white border-gray-300">
-                <Filter className="h-4 w-4" />
-                Status: {statusFilter}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setStatusFilter("All")}>All</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("Pending")}>Pending</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("Approved")}>Approved</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter("Rejected")}>Rejected</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="flex gap-2 bg-white border-gray-300">
+              <Filter className="h-4 w-4" />
+              Status: {statusFilter}
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setStatusFilter("All")}>All</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter("Pending")}>Pending</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter("Approved")}>Approved</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusFilter("Rejected")}>Rejected</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto w-full">
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
           </div>
         ) : (
-          <table className="w-full table-fixed">
+          <table className="w-full">
             <thead className="bg-gray-300 text-left">
               <tr>
                 <th className="p-3 font-medium w-[18%]">User</th>
-                <th className="p-3 font-medium w-[12%]">Room</th>
-                <th className="p-3 font-medium w-[15%]">Date & Time</th>
+                <th className="p-3 font-medium w-[15%]">Room</th>
+                <th className="p-3 font-medium w-[22%]">Date & Time</th>
                 <th className="p-3 font-medium w-[20%]">Purpose</th>
                 <th className="p-3 font-medium w-[10%]">Status</th>
-                <th className="p-3 font-medium w-[25%]">Actions</th>
+                <th className="p-3 font-medium w-[15%]">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1135,20 +576,9 @@ function ReservationTable({
                           <User className="h-4 w-4 text-gray-500 flex-shrink-0" />
                           <span className="truncate font-medium">{reservation.user_name}</span>
                         </div>
-                        <div className="pl-6 flex flex-col gap-1 text-xs text-gray-500">
-                          {reservation.contact_email && (
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{reservation.contact_email}</span>
-                            </div>
-                          )}
-                          {reservation.contact_phone && (
-                            <div className="flex items-center gap-1">
-                              <Phone className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{reservation.contact_phone}</span>
-                            </div>
-                          )}
-                        </div>
+                        {reservation.contact_email && (
+                          <span className="text-xs text-gray-500 truncate pl-6">{reservation.contact_email}</span>
+                        )}
                       </div>
                     </td>
                     <td className="p-3">
@@ -1172,9 +602,9 @@ function ReservationTable({
                     <td className="p-3">
                       <div className="flex flex-col">
                         <div className="font-medium truncate">{reservation.booking_name}</div>
-                        <div className="text-xs text-gray-500 line-clamp-2">
-                          {reservation.purpose || "No purpose specified"}
-                        </div>
+                        {reservation.purpose && reservation.purpose !== reservation.booking_name && (
+                          <div className="text-xs text-gray-500 truncate">{reservation.purpose}</div>
+                        )}
                       </div>
                     </td>
                     <td className="p-3">
@@ -1214,32 +644,6 @@ function ReservationTable({
                         {reservation.status !== "Pending" && (
                           <span className="text-sm text-gray-500 italic">No actions available</span>
                         )}
-
-                        {/* User Actions */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline">
-                              User Actions
-                              <ChevronDown className="h-4 w-4 ml-1" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onBanUser(reservation.user_id, reservation.user_name || "User", "temporary")
-                              }
-                            >
-                              <Ban className="h-4 w-4 mr-2" /> 1-Month Ban
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onBanUser(reservation.user_id, reservation.user_name || "User", "permanent")
-                              }
-                            >
-                              <Ban className="h-4 w-4 mr-2" /> Permanent Ban
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>

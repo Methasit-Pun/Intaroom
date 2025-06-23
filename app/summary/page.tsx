@@ -19,24 +19,13 @@ import {
   Loader2,
   ArrowLeft,
   AlertCircle,
-  Coins,
-  FileText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { Checkbox } from "@/components/ui/checkbox"
 import RulesPoliciesModal from "@/components/rules-policies-modal"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 
-// Function to parse a date string in YYYY-MM-DD format to a Date object
-// This ensures we're working with the date in local timezone
-function parseLocalDate(dateString: string): Date {
-  const [year, month, day] = dateString.split("-").map(Number)
-  return new Date(year, month - 1, day)
-}
+// Update the Supabase client initialization to use the singleton pattern
+import { getSupabaseClient } from "@/lib/supabase-client"
 
 export default function SummaryPage() {
   const router = useRouter()
@@ -44,14 +33,6 @@ export default function SummaryPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const [attendeesCount, setAttendeesCount] = useState<number | "">("")
-  const [reservationReason, setReservationReason] = useState("")
-  const [fieldErrors, setFieldErrors] = useState({
-    attendees: false,
-    reason: false,
-  })
-  const MAX_REASON_LENGTH = 250
-
   const [bookingData, setBookingData] = useState({
     bookingName: "",
     roomId: "",
@@ -66,15 +47,17 @@ export default function SummaryPage() {
     attendees: 4,
     specialRequests: ["Projector", "Whiteboard"],
     checkInMethod: "QR Code",
-    userCredits: 0,
-    requiredCredits: 0,
   })
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  // Replace this line:
+  // const supabase = createClientComponentClient({
+  //   supabaseUrl,
+  //   supabaseKey: supabaseAnonKey,
+  // })
+
+  // With this:
+  const supabase = getSupabaseClient()
 
   useEffect(() => {
     const loadData = async () => {
@@ -84,15 +67,9 @@ export default function SummaryPage() {
         const roomId = searchParams.get("roomId") || ""
         const roomName = searchParams.get("roomName") || `Room ${roomId}`
         const date = searchParams.get("date") || ""
-        const confirmationNumber = searchParams.get("confirmationNumber") || "INR-00000"
+        const confirmationNumber = searchParams.get("confirmationNumber") || "INR-123456"
         const timeSlotsParam = searchParams.get("timeSlots") || "[]"
-        const userCredits = Number.parseInt(searchParams.get("userCredits") || "0", 10)
-        const requiredCredits = Number.parseInt(searchParams.get("requiredCredits") || "0", 10)
-
         let timeSlots: string[] = []
-
-        // Log the received date for debugging
-        console.log("Summary page received date:", date)
 
         try {
           timeSlots = JSON.parse(timeSlotsParam)
@@ -119,9 +96,7 @@ export default function SummaryPage() {
             confirmationNumber,
             bookedBy: profileData?.full_name || session.user.email || "",
             contactEmail: session.user.email || "",
-            contactPhone: profileData?.telephone || "",
-            userCredits,
-            requiredCredits,
+            contactPhone: profileData?.phone || "",
           })
         } else {
           // If no session, just use the URL params
@@ -133,8 +108,6 @@ export default function SummaryPage() {
             date,
             timeSlots,
             confirmationNumber,
-            userCredits,
-            requiredCredits,
           })
         }
       } catch (error) {
@@ -143,7 +116,6 @@ export default function SummaryPage() {
     }
 
     loadData()
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, supabase])
 
@@ -152,19 +124,22 @@ export default function SummaryPage() {
     if (!dateString) return ""
 
     try {
-      // Parse the date string to a Date object in local timezone
-      const localDate = parseLocalDate(dateString)
+      // Parse the date string directly without timezone conversion
+      // Format: YYYY-MM-DD
+      const [year, month, day] = dateString.split("-").map((num) => Number.parseInt(num, 10))
 
-      // Format the date for display
-      return localDate.toLocaleDateString("en-US", {
+      // Create date with local timezone (month is 0-indexed in JS Date)
+      const date = new Date(year, month - 1, day)
+
+      return date.toLocaleDateString("en-US", {
         weekday: "long",
         year: "numeric",
         month: "long",
         day: "numeric",
       })
     } catch (error) {
-      console.error("Error formatting date:", error)
-      return dateString // Fallback to the original string
+      console.error("Error formatting date:", error, dateString)
+      return dateString
     }
   }
 
@@ -204,185 +179,14 @@ export default function SummaryPage() {
     router.back()
   }
 
-  // Function to convert time format (e.g., "8 AM" to "08:00")
-  const convertTimeFormat = (timeString: string): string => {
-    const [hourStr, period] = timeString.split(" ")
-    let hour = Number.parseInt(hourStr)
-
-    // Convert to 24-hour format
-    if (period === "PM" && hour < 12) hour += 12
-    if (period === "AM" && hour === 12) hour = 0
-
-    // Format with leading zero if needed
-    return `${hour.toString().padStart(2, "0")}:00`
-  }
-
-  // Function to get the next sequential confirmation number
-  const getNextConfirmationNumber = async (): Promise<string> => {
-    try {
-      // Query the database to get the latest confirmation number
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("confirmation_number")
-        .order("confirmation_number", { ascending: false })
-        .limit(1)
-
-      if (error) {
-        console.error("Error fetching latest confirmation number:", error)
-        throw error
-      }
-
-      // Default starting number if no records exist
-      let nextNumber = 1
-
-      if (data && data.length > 0) {
-        // Extract the latest confirmation number
-        const latestConfirmation = data[0].confirmation_number
-
-        // Check if it follows our format (INR-XXXXX)
-        const match = latestConfirmation.match(/^INR-(\d+)(-\d+)?$/)
-
-        if (match) {
-          // Extract the number part and increment it
-          const currentNumber = Number.parseInt(match[1], 10)
-          nextNumber = currentNumber + 1
-        }
-      }
-
-      // Format with leading zeros (5 digits)
-      return `INR-${nextNumber.toString().padStart(5, "0")}`
-    } catch (error) {
-      console.error("Error generating next confirmation number:", error)
-      // Fallback to a timestamp-based number if there's an error
-      const timestamp = Date.now().toString().slice(-5)
-      return `INR-${timestamp}`
-    }
-  }
-
-  const validateFields = () => {
-    const newFieldErrors = {
-      attendees: attendeesCount === "" || attendeesCount < 1,
-      reason: !reservationReason.trim(),
-    }
-
-    setFieldErrors(newFieldErrors)
-    return !newFieldErrors.attendees && !newFieldErrors.reason
-  }
-
-  const handleConfirmReservation = async () => {
-    // Validate required fields
-    if (!validateFields()) {
-      setError("Please fill in all required fields.")
-      return
-    }
-
+  const handleConfirmReservation = () => {
     if (!agreedToTerms) {
       setError("Please agree to the Rules & Policies before confirming your reservation.")
       return
     }
 
-    // Check if user has enough credits
-    if (bookingData.requiredCredits > bookingData.userCredits) {
-      setError(
-        "You don't have enough credits for this reservation. Please reduce the number of time slots or contact an administrator.",
-      )
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Get current user
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!session?.user) {
-        throw new Error("You must be logged in to confirm a reservation")
-      }
-
-      // Sort time slots chronologically
-      const sortedTimeSlots = [...bookingData.timeSlots].sort((a, b) => {
-        const hourA = Number.parseInt(a.split(" ")[0])
-        const hourB = Number.parseInt(b.split(" ")[0])
-        const isPMA = a.includes("PM")
-        const isPMB = b.includes("PM")
-
-        // Compare AM/PM first
-        if (isPMA && !isPMB) return 1
-        if (!isPMA && isPMB) return -1
-
-        // Then compare hours
-        return hourA - hourB
-      })
-
-      // Log the date being used for the reservation
-      console.log("Creating reservation with date:", bookingData.date)
-
-      // Get the next sequential confirmation number
-      const baseConfirmationNumber = await getNextConfirmationNumber()
-      console.log("Generated confirmation number:", baseConfirmationNumber)
-
-      // Create reservation data for each time slot
-      for (let i = 0; i < sortedTimeSlots.length; i++) {
-        const timeSlot = sortedTimeSlots[i]
-
-        // Convert time format (e.g., "8 AM" to "08:00")
-        const startTime = convertTimeFormat(timeSlot)
-
-        // Calculate end time (1 hour later)
-        const [hourStr] = startTime.split(":")
-        const hour = Number.parseInt(hourStr)
-        const endTime = `${(hour + 1).toString().padStart(2, "0")}:00`
-
-        // Create a unique confirmation number for each slot by adding a suffix
-        const confirmationNumber =
-          sortedTimeSlots.length > 1 ? `${baseConfirmationNumber}-${i + 1}` : baseConfirmationNumber
-
-        // Create reservation in Supabase
-        const { error: insertError } = await supabase.from("reservations").insert({
-          booking_name: bookingData.bookingName,
-          room_id: Number.parseInt(bookingData.roomId),
-          user_id: session.user.id,
-          date: bookingData.date, // Use the date directly from state
-          start_time: startTime,
-          end_time: endTime,
-          status: "Pending",
-          purpose: reservationReason.trim(),
-          attendees: attendeesCount,
-          contact_email: bookingData.contactEmail || session.user.email,
-          confirmation_number: confirmationNumber,
-          check_in_method: "QR Code",
-        })
-
-        if (insertError) {
-          console.error("Error creating reservation:", insertError)
-          throw new Error(`Failed to create reservation: ${insertError.message}`)
-        }
-      }
-
-      // Deduct credits from user's account
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          credits: bookingData.userCredits - bookingData.requiredCredits,
-        })
-        .eq("id", session.user.id)
-
-      if (updateError) {
-        console.error("Error updating credits:", updateError)
-        throw new Error(`Failed to update credits: ${updateError.message}`)
-      }
-
-      // Navigate back to the home page
-      router.push("/")
-    } catch (error: any) {
-      console.error("Error confirming reservation:", error)
-      setError(error.message || "Failed to confirm reservation")
-    } finally {
-      setLoading(false)
-    }
+    // Navigate back to the home page
+    router.push("/")
   }
 
   const handleModify = () => {
@@ -398,14 +202,37 @@ export default function SummaryPage() {
     setError(null)
 
     try {
-      // Delete the reservation from Supabase
-      const { error } = await supabase
+      // Extract the base confirmation number (before any dash)
+      const baseConfirmationNumber = bookingData.confirmationNumber.split("-")[0]
+
+      // Find all reservations with this base confirmation number and date
+      const { data: reservationsToDelete, error: fetchError } = await supabase
         .from("reservations")
-        .delete()
-        .eq("confirmation_number", bookingData.confirmationNumber)
+        .select("id, confirmation_number")
+        .like("confirmation_number", `${baseConfirmationNumber}%`)
+        .eq("date", bookingData.date)
 
-      if (error) throw error
+      if (fetchError) throw fetchError
 
+      if (!reservationsToDelete || reservationsToDelete.length === 0) {
+        throw new Error("No reservations found to cancel")
+      }
+
+      console.log(
+        `Found ${reservationsToDelete.length} reservations to delete with base confirmation ${baseConfirmationNumber}`,
+      )
+
+      // Delete each reservation individually
+      for (const reservation of reservationsToDelete) {
+        const { error: deleteError } = await supabase.from("reservations").delete().eq("id", reservation.id)
+
+        if (deleteError) {
+          console.error(`Error deleting reservation ${reservation.id}:`, deleteError)
+          throw deleteError
+        }
+      }
+
+      // Navigate back to home page after successful deletion
       router.push("/")
     } catch (error: any) {
       console.error("Error canceling reservation:", error)
@@ -414,8 +241,6 @@ export default function SummaryPage() {
       setLoading(false)
     }
   }
-
-  const isFormValid = agreedToTerms && attendeesCount !== "" && attendeesCount >= 1 && reservationReason.trim() !== ""
 
   return (
     <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white">
@@ -455,19 +280,6 @@ export default function SummaryPage() {
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">Confirmation #{bookingData.confirmationNumber}</p>
-          </div>
-
-          {/* Credit information */}
-          <div className="p-3 bg-[#F8F3E6] border-b border-[#E6D9B8]">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Coins className="h-4 w-4 text-[#D4AF37]" />
-                <span className="text-sm font-medium">Credits Required: {bookingData.requiredCredits}</span>
-              </div>
-              <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-full text-xs">
-                <span className="font-medium">{bookingData.userCredits}</span> credits available
-              </div>
-            </div>
           </div>
 
           {/* Middle section - Details */}
@@ -513,6 +325,14 @@ export default function SummaryPage() {
               </div>
 
               <div className="flex items-start gap-3">
+                <Users className="h-5 w-5 text-gray-500 mt-0.5" />
+                <div>
+                  <p className="font-medium">Attendees</p>
+                  <p className="text-sm text-gray-600">{bookingData.attendees} people</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
                 <Mail className="h-5 w-5 text-gray-500 mt-0.5" />
                 <div>
                   <p className="font-medium">Email</p>
@@ -531,89 +351,9 @@ export default function SummaryPage() {
               )}
             </div>
 
-            <h3 className="font-medium text-gray-700 border-b pb-2 pt-2">Reservation Information</h3>
+            <h3 className="font-medium text-gray-700 border-b pb-2 pt-2">Room Preferences</h3>
 
-            <div className="space-y-4">
-              {/* Number of Attendees Input */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-gray-500" />
-                  <Label htmlFor="attendees" className="text-sm font-medium">
-                    How many people will attend? <span className="text-red-500">*</span>
-                  </Label>
-                </div>
-                <div className="relative">
-                  <Input
-                    id="attendees"
-                    type="number"
-                    min={1}
-                    placeholder="e.g. 12"
-                    value={attendeesCount}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? "" : Number.parseInt(e.target.value, 10)
-                      setAttendeesCount(value)
-                      if (value !== "" && value >= 1) {
-                        setFieldErrors((prev) => ({ ...prev, attendees: false }))
-                      }
-                    }}
-                    className={cn("w-full", fieldErrors.attendees && "border-red-500 focus-visible:ring-red-500")}
-                  />
-                  {fieldErrors.attendees && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500">
-                      <AlertCircle className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-                {fieldErrors.attendees && (
-                  <p className="text-xs text-red-500 mt-1">Please enter the number of attendees</p>
-                )}
-              </div>
-
-              {/* Reservation Purpose/Reason Input */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-gray-500" />
-                  <Label htmlFor="reason" className="text-sm font-medium">
-                    What is the purpose of this reservation? <span className="text-red-500">*</span>
-                  </Label>
-                </div>
-                <div className="relative">
-                  <Textarea
-                    id="reason"
-                    placeholder="e.g. Weekly team sync, client meeting"
-                    value={reservationReason}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      if (value.length <= MAX_REASON_LENGTH) {
-                        setReservationReason(value)
-                        if (value.trim()) {
-                          setFieldErrors((prev) => ({ ...prev, reason: false }))
-                        }
-                      }
-                    }}
-                    className={cn(
-                      "resize-none min-h-[100px]",
-                      fieldErrors.reason && "border-red-500 focus-visible:ring-red-500",
-                    )}
-                  />
-                  {fieldErrors.reason && (
-                    <div className="absolute right-3 top-3 text-red-500">
-                      <AlertCircle className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex justify-between text-xs text-gray-500">
-                  {fieldErrors.reason ? (
-                    <p className="text-red-500">Please enter the purpose of your reservation</p>
-                  ) : (
-                    <span>&nbsp;</span>
-                  )}
-                  <span>
-                    {reservationReason.length}/{MAX_REASON_LENGTH}
-                  </span>
-                </div>
-              </div>
-
+            <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <Monitor className="h-5 w-5 text-gray-500 mt-0.5" />
                 <div>
@@ -677,21 +417,11 @@ export default function SummaryPage() {
           {/* Bottom section - Actions */}
           <div className="p-4 bg-gray-100 border-t border-gray-200 space-y-3">
             <Button
-              className="w-full bg-[#5A0D16] hover:bg-[#4A0B12] text-white shadow-md transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#5A0D16] hover:bg-[#4A0B12] text-white shadow-md transition-all hover:shadow-lg"
               onClick={handleConfirmReservation}
-              disabled={loading || !isFormValid}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Confirm Reservation
-                </>
-              )}
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Confirm Reservation
             </Button>
 
             <div className="flex gap-2">

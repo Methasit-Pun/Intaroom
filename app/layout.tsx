@@ -1,24 +1,35 @@
 import type React from "react"
-import type { Metadata } from "next"
 import "./globals.css"
-import AuthDebug from "@/components/auth-debug"
+import { Inter } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
 
-export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.dev",
+// Import Markazi Text font for login button
+import { Markazi_Text } from "next/font/google"
+
+const inter = Inter({ subsets: ["latin"] })
+const markaziText = Markazi_Text({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-markazi-text",
+})
+
+export const metadata = {
+  title: "Intania Room Reservation",
+  description: "Room reservation system for Intania",
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
     <html lang="en">
-      <body>
-        {children}
-        <AuthDebug />
+      <body className={`${inter.className} ${markaziText.variable}`}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )

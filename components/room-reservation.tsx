@@ -2,38 +2,57 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
-import { ChevronLeft, ChevronRight, Loader2, User, Coins, CalendarDays } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
-import LineProfile from "@/components/line-profile"
-import { useLiff } from "@/components/liff-provider"
+import { MapPin } from "lucide-react"
+import { getSupabaseClient, isUserAuthenticated, getCachedData } from "@/lib/supabase-client"
+import { formatDateToYYYYMMDD } from "@/lib/date-utils"
 
 // Static room data to avoid database queries
 const staticRooms = [
   {
     id: 1,
-    name: "Room 1",
-    capacity: 8,
+    name: "Innospace Room (AIS 5G Garage Room)",
+    capacity: "8-10",
     features: ["Projector", "TV"],
-    image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQhW92Xms3PVXZwNiCuHAT4Gy7Pi510XmfzhQ&s",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
+    location: "1st Floor – Chula Engineering Centennial Building",
+    concept: "A space for innovation and creativity",
+    detailed_features: [
+      "65-inch LED display (with Wireless Cast capability)",
+      "Movable group tables",
+      "Power & USB outlets at every seat",
+      "High-speed Wi-Fi",
+      "Bluetooth speakers",
+    ],
   },
   {
     id: 2,
-    name: "Room 2",
-    capacity: 12,
+    name: "601 IOIC Room",
+    capacity: "30-50",
     features: ["Projector", "Whiteboard"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2020/10/3-1024x650.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building (IOIC Lab)",
+    concept: "Room for club meetings and workshops",
+    detailed_features: ["Co-working style desks", "Whiteboard", "Separate monitor displays", "2 small meeting rooms"],
   },
   {
     id: 3,
-    name: "Room 3",
-    capacity: 6,
+    name: "602 Grass Room",
+    capacity: "30-50",
     features: ["TV", "Conference Phone"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url:
+      "https://www.intaniamagazine.com/wp-content/uploads/2022/12/%E0%B8%82%E0%B9%88%E0%B8%B2%E0%B8%A7%E0%B8%AA%E0%B8%B1%E0%B8%87%E0%B8%84%E0%B8%A1-12-e1669963399174.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building",
+    concept: "Relaxed area with artificial grass for informal brainstorming or meetings",
+    detailed_features: [
+      "Bean bags",
+      "Artificial grass flooring for a natural atmosphere",
+      "TV display with HDMI connection",
+    ],
   },
 ]
 
@@ -59,133 +78,93 @@ export const extendedTimeSlots = [
 export default function RoomReservation() {
   const router = useRouter()
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return today
+  })
   const [reservations, setReservations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userCredits, setUserCredits] = useState(0)
-  const { isLoggedIn: isLiffLoggedIn, liffProfile } = useLiff()
+  const [showRoomDetails, setShowRoomDetails] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
-  // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
+  const currentRoom = staticRooms[currentRoomIndex]
 
-  // Check if user is logged in and fetch credits
+  // Check if user is logged in
   useEffect(() => {
-    const checkSession = async () => {
+    const checkAuth = async () => {
       try {
-        // Check if logged in via Supabase
-        const { data } = await supabase.auth.getSession()
-        const isSupabaseLoggedIn = !!data.session
+        setCheckingAuth(true)
 
-        // Check if logged in via LIFF
-        const isUserLoggedIn = isSupabaseLoggedIn || isLiffLoggedIn
-
-        setIsLoggedIn(isUserLoggedIn)
-
-        console.log("Login state check:", {
-          isSupabaseLoggedIn,
-          isLiffLoggedIn,
-          finalLoginState: isUserLoggedIn,
-        })
-
-        if (isUserLoggedIn) {
-          // If logged in via Supabase, fetch credits from database
-          if (isSupabaseLoggedIn && data.session) {
-            try {
-              const { data: profileData, error: profileError } = await supabase
-                .from("profiles")
-                .select("credits")
-                .eq("id", data.session.user.id)
-                .single()
-
-              if (!profileError && profileData) {
-                setUserCredits(profileData.credits || 100)
-              }
-            } catch (err) {
-              console.error("Error fetching Supabase credits:", err)
-              setUserCredits(100)
-            }
-          }
-          // If logged in via LIFF, try to fetch by LINE user ID
-          else if (isLiffLoggedIn && liffProfile) {
-            try {
-              const { data: lineUserData, error: lineUserError } = await supabase
-                .from("profiles")
-                .select("credits")
-                .eq("line_user_id", liffProfile.userId)
-                .single()
-
-              if (!lineUserError && lineUserData) {
-                setUserCredits(lineUserData.credits || 100)
-              } else {
-                setUserCredits(100)
-              }
-            } catch (err) {
-              console.error("Error fetching LINE user credits:", err)
-              setUserCredits(100)
-            }
-          }
+        // Check if user is logged in via localStorage (for admin)
+        if (localStorage.getItem("isAdmin") === "true") {
+          setIsLoggedIn(true)
+          setCheckingAuth(false)
+          return
         }
+
+        // Check if user is logged in via Supabase
+        const authenticated = await isUserAuthenticated()
+        setIsLoggedIn(authenticated)
       } catch (error) {
-        console.error("Session check error:", error)
+        console.error("Error checking authentication:", error)
+        setIsLoggedIn(false)
+      } finally {
+        setCheckingAuth(false)
       }
     }
 
-    checkSession()
-  }, [supabase, isLiffLoggedIn, liffProfile])
+    checkAuth()
+  }, [])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
-    fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
-  }, [selectedDate, currentRoomIndex])
+    if (!checkingAuth && currentRoom?.id) {
+      fetchReservations(currentRoom.id, selectedDate)
+    }
+  }, [selectedDate, currentRoomIndex, isLoggedIn, checkingAuth])
 
-  // Function to format date as YYYY-MM-DD in local timezone
-  const formatDateForDatabase = (date: Date): string => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    const day = String(date.getDate()).padStart(2, "0")
-    return `${year}-${month}-${day}`
-  }
-
-  // Function to fetch reservations
+  // Function to fetch reservations with caching
   const fetchReservations = async (roomId: number, date: Date) => {
     if (!roomId) return
 
     setLoading(true)
+    setError(null)
+
     try {
-      // Format date as YYYY-MM-DD for database query using local timezone
-      const dateStr = formatDateForDatabase(date)
-      console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
+      const dateStr = formatDateToYYYYMMDD(date)
+      const cacheKey = `reservations-${roomId}-${dateStr}`
 
-      // Direct query to reservations table only, avoiding profiles table
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("booking_name, room_id, date, start_time, end_time, status")
-        .eq("room_id", roomId)
-        .eq("date", dateStr)
+      const data = await getCachedData(
+        cacheKey,
+        async () => {
+          const supabase = getSupabaseClient()
+          const { data, error } = await supabase
+            .from("reservations")
+            .select("booking_name, room_id, date, start_time, end_time, status")
+            .eq("room_id", roomId)
+            .eq("date", dateStr)
 
-      if (error) {
-        console.error("Error fetching reservations:", error)
-        // Use empty array instead of throwing error
-        setReservations([])
-        return
-      }
+          if (error) {
+            console.error("Error fetching reservations:", error)
+            return []
+          }
 
-      console.log(`Found ${data?.length || 0} reservations:`, data)
-      setReservations(data || [])
-    } catch (error: any) {
+          return data || []
+        },
+        300000, // 5 minute cache
+      )
+
+      setReservations(data)
+    } catch (error) {
       console.error("Error in fetchReservations:", error)
       setReservations([])
     } finally {
       setLoading(false)
     }
   }
-
-  const currentRoom = staticRooms[currentRoomIndex]
 
   // Navigation functions for room carousel
   const prevRoom = () => {
@@ -212,13 +191,6 @@ export default function RoomReservation() {
   }
 
   const weekDates = getWeekDates()
-
-  // Format date range for display
-  const formatDateRange = () => {
-    const firstDate = weekDates[0]
-    const lastDate = weekDates[6]
-    return `${firstDate.toLocaleDateString("en-US", { month: "short" })} ${firstDate.getDate()}-${lastDate.getDate()}`
-  }
 
   // Generate calendar days for the current month view
   const generateCalendarDays = () => {
@@ -247,9 +219,7 @@ export default function RoomReservation() {
 
   // Check if a time slot has a reservation
   const getReservation = (time: string) => {
-    // Format date as YYYY-MM-DD for comparison using local timezone
-    const dateStr = formatDateForDatabase(selectedDate)
-
+    const dateStr = formatDateToYYYYMMDD(selectedDate)
     let hour = Number.parseInt(time.split(" ")[0])
     const period = time.split(" ")[1]
 
@@ -283,41 +253,32 @@ export default function RoomReservation() {
     }))
   }
 
+  // Handle create reservation
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
-    // Check if user is logged in
-    if (!isLoggedIn) {
-      router.push("/login")
-      return
+    try {
+      // Generate availability data
+      const availabilityData = generateAvailabilityData()
+
+      // Create URL parameters
+      const params = new URLSearchParams()
+      params.set("room", currentRoom.id.toString())
+      params.set("roomName", currentRoom.name)
+      params.set("date", formatDateToYYYYMMDD(selectedDate))
+      params.set("availability", JSON.stringify(availabilityData))
+
+      // Use router.push for navigation
+      router.push(`/reserve?${params.toString()}`)
+    } catch (error) {
+      console.error("Error in handleCreateReservation:", error)
+      setError("Failed to create reservation. Please try again.")
     }
-
-    // Format the selected date as YYYY-MM-DD in local timezone
-    const formattedDate = formatDateForDatabase(selectedDate)
-
-    // Log the date being passed to ensure it's correct
-    console.log("Creating reservation for date:", formattedDate, "Selected date:", selectedDate.toDateString())
-
-    // Generate availability data for the selected date
-    const availabilityData = generateAvailabilityData()
-
-    // Navigate to the reservation page with room, date, and availability info
-    const params = new URLSearchParams()
-    params.set("room", currentRoom.id.toString())
-    params.set("roomName", currentRoom.name)
-    params.set("date", formattedDate)
-    params.set("availability", JSON.stringify(availabilityData))
-    params.set("userCredits", userCredits.toString())
-
-    router.push(`/reserve?${params.toString()}`)
   }
 
+  // Handle my reservations navigation
   const handleMyReservations = () => {
     router.push("/my-reservations")
-  }
-
-  const handleProfile = () => {
-    router.push("/profile")
   }
 
   return (
@@ -327,50 +288,25 @@ export default function RoomReservation() {
         <h1 className="text-xl font-semibold">
           <span className="text-[#D4AF37]">INTA</span>ROOM
         </h1>
-        {isLoggedIn ? (
-          <div className="flex gap-2 items-center">
-            {/* Credits display */}
-            <div className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-[#6D3B3B] rounded-full mr-1">
-              <Coins className="h-4 w-4 text-[#D4AF37]" />
-              <span className="text-sm font-medium">{userCredits} Credits</span>
-            </div>
-
-            {/* LINE Profile */}
-            <div className="hidden sm:block">
-              <LineProfile />
-            </div>
-
-            <div className="flex space-x-1">
-              <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleProfile}>
-                <User className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Profile</span>
-              </Button>
-
-              <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
-                <CalendarDays className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">My Reservations</span>
-              </Button>
-
-              <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
-            </div>
+        {isLoggedIn && (
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/10 sm:flex hidden"
+              onClick={handleMyReservations}
+            >
+              <User className="h-4 w-4 mr-2" />
+              My Reservations
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-white hover:bg-white/10 flex sm:hidden"
+              onClick={handleMyReservations}
+            >
+              <User className="h-4 w-4" />
+            </Button>
+            <LogoutButton variant="ghost" className="text-white hover:bg-white/10" showTextOnMobile={false} />
           </div>
-        ) : (
-          <Button
-            onClick={() => router.push("/login")}
-            className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
-          >
-            Login
-          </Button>
-        )}
-        {process.env.NODE_ENV === "development" && (
-          <Button
-            onClick={() => router.push("/test-auth")}
-            variant="outline"
-            className="ml-2 text-white border-white/30 hover:bg-white/10"
-            size="sm"
-          >
-            Test Auth
-          </Button>
         )}
       </div>
 
@@ -386,9 +322,13 @@ export default function RoomReservation() {
                 alt={currentRoom.name}
                 fill
                 className="object-cover"
+                priority
               />
               {/* Add a dark overlay to dim the image */}
-              <div className="absolute inset-0 bg-black/40"></div>
+              <div
+                className="absolute inset-0 bg-black/40 cursor-pointer"
+                onClick={() => setShowRoomDetails(true)}
+              ></div>
 
               {/* Move room info on top of the image */}
               <div className="absolute bottom-0 left-0 p-3 w-full">
@@ -504,15 +444,7 @@ export default function RoomReservation() {
                       day && "hover:bg-gray-200",
                     )}
                     disabled={!day || loading}
-                    onClick={() => {
-                      if (day) {
-                        // Log the date being selected for debugging
-                        console.log("Selected date:", day.toDateString())
-                        setSelectedDate(day)
-                        // Immediately fetch reservations for the new date
-                        fetchReservations(currentRoom.id, day)
-                      }
-                    }}
+                    onClick={() => day && setSelectedDate(day)}
                   >
                     {day ? day.getDate() : ""}
                   </button>
@@ -569,15 +501,104 @@ export default function RoomReservation() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Loading...
                 </>
-              ) : isLoggedIn ? (
-                "Create a New Reservation"
               ) : (
-                "Login to Create Reservation"
+                "Create a New Reservation"
               )}
             </Button>
+
+            <div className="text-center mt-2">
+              <p className="text-white/70 text-sm">
+                Button not working?{" "}
+                <a
+                  href={`/reserve?room=${currentRoom.id}&roomName=${encodeURIComponent(currentRoom.name)}&date=${formatDateToYYYYMMDD(selectedDate)}`}
+                  className="underline hover:text-white"
+                >
+                  Click here instead
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Room Details Modal */}
+      {showRoomDetails && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white text-gray-800 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="bg-[#5A0D16] text-white p-4 rounded-t-xl flex justify-between items-center">
+              <h2 className="text-xl font-bold">{currentRoom.name}</h2>
+              <button
+                onClick={() => setShowRoomDetails(false)}
+                className="p-1 rounded-full hover:bg-white/10 transition-colors"
+                aria-label="Close"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {/* Location and Capacity */}
+              <div className="mb-5 bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="mt-1 bg-[#5A0D16]/10 p-1.5 rounded-full">
+                    <User className="h-4 w-4 text-[#5A0D16]" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Capacity</p>
+                    <p className="font-medium text-lg">Accommodates {currentRoom.capacity} people</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 bg-[#5A0D16]/10 p-1.5 rounded-full">
+                    <MapPin className="h-4 w-4 text-[#5A0D16]" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Location</p>
+                    <p className="font-medium">{currentRoom.location}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Concept */}
+              <div className="mb-5">
+                <h3 className="font-semibold text-[#5A0D16] mb-2 flex items-center">
+                  <ChevronRight className="h-4 w-4 mr-1" />
+                  Concept
+                </h3>
+                <p className="text-gray-700 pl-5">{currentRoom.concept}</p>
+              </div>
+
+              {/* Facilities */}
+              <div>
+                <h3 className="font-semibold text-[#5A0D16] mb-3 flex items-center">
+                  <ChevronRight className="h-4 w-4 mr-1" />
+                  Facilities
+                </h3>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="grid grid-cols-1 gap-2">
+                    {currentRoom.detailed_features?.map((feature, index) => (
+                      <div key={index} className="flex items-center p-2 hover:bg-gray-100 rounded-md transition-colors">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#5A0D16] mr-2 flex-shrink-0"></div>
+                        <span className="text-sm text-gray-700">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                className="mt-5 w-full py-2.5 bg-[#5A0D16] text-white rounded-lg hover:bg-[#8B1F2D] transition-colors font-medium"
+                onClick={() => setShowRoomDetails(false)}
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
