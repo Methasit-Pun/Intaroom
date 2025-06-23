@@ -16,24 +16,44 @@ import { useLiff } from "@/components/liff-provider"
 const staticRooms = [
   {
     id: 1,
-    name: "Room 1",
-    capacity: 8,
+    name: "Innospace Room (AIS 5G Garage Room)",
+    capacity: "8-10",
     features: ["Projector", "TV"],
-    image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQhW92Xms3PVXZwNiCuHAT4Gy7Pi510XmfzhQ&s",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
+    location: "1st Floor – Chula Engineering Centennial Building",
+    concept: "A space for innovation and creativity",
+    detailed_features: [
+      "65-inch LED display (with Wireless Cast capability)",
+      "Movable group tables",
+      "Power & USB outlets at every seat",
+      "High-speed Wi-Fi",
+      "Bluetooth speakers",
+    ],
   },
   {
     id: 2,
-    name: "Room 2",
-    capacity: 12,
+    name: "601 IOIC Room",
+    capacity: "30-50",
     features: ["Projector", "Whiteboard"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2020/10/3-1024x650.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building (IOIC Lab)",
+    concept: "Room for club meetings and workshops",
+    detailed_features: ["Co-working style desks", "Whiteboard", "Separate monitor displays", "2 small meeting rooms"],
   },
   {
     id: 3,
-    name: "Room 3",
-    capacity: 6,
+    name: "602 Grass Room",
+    capacity: "30-50",
     features: ["TV", "Conference Phone"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url:
+      "https://www.intaniamagazine.com/wp-content/uploads/2022/12/%E0%B8%82%E0%B9%88%E0%B8%B2%E0%B8%A7%E0%B8%AA%E0%B8%B1%E0%B8%87%E0%B8%84%E0%B8%A1-12-e1669963399174.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building",
+    concept: "Relaxed area with artificial grass for informal brainstorming or meetings",
+    detailed_features: [
+      "Bean bags",
+      "Artificial grass flooring for a natural atmosphere",
+      "TV display with HDMI connection",
+    ],
   },
 ]
 
@@ -77,33 +97,42 @@ export default function RoomReservation() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        console.log("Checking authentication state...")
+
         // Check if logged in via Supabase
-        const { data } = await supabase.auth.getSession()
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error("Session check error:", error)
+        }
+
         const isSupabaseLoggedIn = !!data.session
+        console.log("Supabase session:", isSupabaseLoggedIn ? "Active" : "None")
 
         // Check if logged in via LIFF
         const isUserLoggedIn = isSupabaseLoggedIn || isLiffLoggedIn
+        console.log("Final login state:", isUserLoggedIn)
 
         setIsLoggedIn(isUserLoggedIn)
-
-        console.log("Login state check:", {
-          isSupabaseLoggedIn,
-          isLiffLoggedIn,
-          finalLoginState: isUserLoggedIn,
-        })
 
         if (isUserLoggedIn) {
           // If logged in via Supabase, fetch credits from database
           if (isSupabaseLoggedIn && data.session) {
+            console.log("Fetching user profile for:", data.session.user.email)
+
             try {
               const { data: profileData, error: profileError } = await supabase
                 .from("profiles")
-                .select("credits")
+                .select("credits, username, full_name")
                 .eq("id", data.session.user.id)
                 .single()
 
               if (!profileError && profileData) {
+                console.log("User profile loaded:", profileData)
                 setUserCredits(profileData.credits || 100)
+              } else {
+                console.error("Profile fetch error:", profileError)
+                setUserCredits(100)
               }
             } catch (err) {
               console.error("Error fetching Supabase credits:", err)

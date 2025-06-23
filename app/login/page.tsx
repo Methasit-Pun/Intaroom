@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
-import { CheckCircle, Loader2 } from "lucide-react"
+import { CheckCircle, Loader2, AlertCircle } from "lucide-react"
 import LineLoginButton from "@/components/line-login-button"
 import { useLiff } from "@/components/liff-provider"
 
@@ -85,62 +85,106 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
+    console.log("Login attempt:", { username, userType })
+
     try {
       if (userType === "admin") {
         // Admin login - completely bypass Supabase auth
-        // Check hardcoded admin credentials
         if (username === "admin1" && password === "admin123") {
-          // Store admin status in localStorage
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
-
-          // Set a cookie for server-side checks (middleware)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
-
-          // Redirect to admin page
           router.push("/admin")
+          return
         } else {
           throw new Error("Invalid admin credentials")
         }
       } else {
-        // Regular user login - first check if input is an email or username
+        // Regular user login
         let email = username
+        let userProfile = null
 
         // If username doesn't contain @ symbol, look up the email by username
         if (!username.includes("@")) {
+          console.log("Looking up email for username:", username)
+
           const { data: profileData, error: profileError } = await supabase
             .from("profiles")
-            .select("email")
+            .select("email, id, full_name, username")
             .eq("username", username)
             .single()
 
-          if (profileError || !profileData) {
-            throw new Error("Username not found")
+          console.log("Profile lookup result:", { profileData, profileError })
+
+          if (profileError) {
+            console.error("Profile lookup error:", profileError)
+            throw new Error("Username not found. Please check your username or register a new account.")
+          }
+
+          if (!profileData) {
+            throw new Error("Username not found. Please check your username or register a new account.")
           }
 
           email = profileData.email
+          userProfile = profileData
+          console.log("Found email for username:", email)
         }
 
         // Now login with the email
+        console.log("Attempting Supabase login with email:", email)
+
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
         })
 
-        if (error) throw error
+        console.log("Supabase login result:", { data, error })
+
+        if (error) {
+          console.error("Supabase login error:", error)
+
+          // Provide more specific error messages
+          if (error.message.includes("Invalid login credentials")) {
+            throw new Error("Invalid username or password. Please check your credentials and try again.")
+          } else if (error.message.includes("Email not confirmed")) {
+            throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+          } else {
+            throw new Error(error.message || "Login failed. Please try again.")
+          }
+        }
 
         if (data.user) {
+          console.log("Login successful, user:", data.user.id)
+
           // Check if email is verified for user accounts
           if (!data.user.email_confirmed_at) {
+            await supabase.auth.signOut() // Sign out the unverified user
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           }
 
-          // Regular user
+          // Store user info in localStorage for quick access
+          if (userProfile) {
+            localStorage.setItem(
+              "currentUser",
+              JSON.stringify({
+                id: data.user.id,
+                email: data.user.email,
+                username: userProfile.username,
+                full_name: userProfile.full_name,
+              }),
+            )
+          }
+
+          console.log("Redirecting to main page")
+          // Successful login - redirect to main page
           router.push("/")
+        } else {
+          throw new Error("Login failed. No user data received.")
         }
       }
     } catch (error: any) {
-      setError(error.message || "Failed to login")
+      console.error("Login error:", error)
+      setError(error.message || "Failed to login. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -159,7 +203,10 @@ export default function LoginPage() {
         )}
 
         {error && (
-          <div className="bg-red-500/20 border border-red-500 text-white p-3 rounded-lg mb-4 text-sm">{error}</div>
+          <div className="bg-red-500/20 border border-red-500 text-white p-3 rounded-lg mb-4 text-sm flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <p>{error}</p>
+          </div>
         )}
 
         {/* User Type Selection */}
@@ -208,6 +255,7 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -219,6 +267,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -229,6 +278,7 @@ export default function LoginPage() {
                   checked={rememberMe}
                   onCheckedChange={(checked) => setRememberMe(checked === true)}
                   className="border-white/50 data-[state=checked]:bg-white data-[state=checked]:text-[#5A0D16]"
+                  disabled={loading}
                 />
                 <Label htmlFor="remember" className="text-sm text-white cursor-pointer">
                   Remember Me
@@ -245,7 +295,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-full bg-white hover:bg-gray-100 text-[#000000] font-medium transition-colors font-markazi text-[20px]"
+              className="w-full py-3 rounded-full bg-white hover:bg-gray-100 text-[#000000] font-medium transition-colors font-markazi text-[20px] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -265,6 +315,14 @@ export default function LoginPage() {
             <Link href="/register" className="hover:underline">
               Register
             </Link>
+          </div>
+        )}
+
+        {/* Debug info in development */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="mt-4 p-3 bg-black/20 rounded-lg text-xs text-white/70">
+            <p>Debug: Username lookup and Supabase auth enabled</p>
+            <p>Test with username: MB, password: abc123</p>
           </div>
         )}
       </div>
