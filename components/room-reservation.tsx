@@ -9,29 +9,51 @@ import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
+import LineProfile from "@/components/line-profile"
+import { useLiff } from "@/components/liff-provider"
 
 // Static room data to avoid database queries
 const staticRooms = [
   {
     id: 1,
-    name: "Room 1",
-    capacity: 8,
+    name: "Innospace Room (AIS 5G Garage Room)",
+    capacity: "8-10",
     features: ["Projector", "TV"],
-    image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQhW92Xms3PVXZwNiCuHAT4Gy7Pi510XmfzhQ&s",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
+    location: "1st Floor – Chula Engineering Centennial Building",
+    concept: "A space for innovation and creativity",
+    detailed_features: [
+      "65-inch LED display (with Wireless Cast capability)",
+      "Movable group tables",
+      "Power & USB outlets at every seat",
+      "High-speed Wi-Fi",
+      "Bluetooth speakers",
+    ],
   },
   {
     id: 2,
-    name: "Room 2",
-    capacity: 12,
+    name: "601 IOIC Room",
+    capacity: "30-50",
     features: ["Projector", "Whiteboard"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2020/10/3-1024x650.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building (IOIC Lab)",
+    concept: "Room for club meetings and workshops",
+    detailed_features: ["Co-working style desks", "Whiteboard", "Separate monitor displays", "2 small meeting rooms"],
   },
   {
     id: 3,
-    name: "Room 3",
-    capacity: 6,
+    name: "602 Grass Room",
+    capacity: "30-50",
     features: ["TV", "Conference Phone"],
-    image_url: "/placeholder.svg?height=300&width=600",
+    image_url:
+      "https://www.intaniamagazine.com/wp-content/uploads/2022/12/%E0%B8%82%E0%B9%88%E0%B8%B2%E0%B8%A7%E0%B8%AA%E0%B8%B1%E0%B8%87%E0%B8%84%E0%B8%A1-12-e1669963399174.jpg",
+    location: "6th Floor – Chula Engineering Centennial Building",
+    concept: "Relaxed area with artificial grass for informal brainstorming or meetings",
+    detailed_features: [
+      "Bean bags",
+      "Artificial grass flooring for a natural atmosphere",
+      "TV display with HDMI connection",
+    ],
   },
 ]
 
@@ -63,6 +85,7 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
+  const { isLoggedIn: isLiffLoggedIn, liffProfile } = useLiff()
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -74,20 +97,66 @@ export default function RoomReservation() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data } = await supabase.auth.getSession()
-        const isUserLoggedIn = !!data.session
+        console.log("Checking authentication state...")
+
+        // Check if logged in via Supabase
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error("Session check error:", error)
+        }
+
+        const isSupabaseLoggedIn = !!data.session
+        console.log("Supabase session:", isSupabaseLoggedIn ? "Active" : "None")
+
+        // Check if logged in via LIFF
+        const isUserLoggedIn = isSupabaseLoggedIn || isLiffLoggedIn
+        console.log("Final login state:", isUserLoggedIn)
+
         setIsLoggedIn(isUserLoggedIn)
 
-        if (isUserLoggedIn && data.session) {
-          // Fetch user credits
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("credits")
-            .eq("id", data.session.user.id)
-            .single()
+        if (isUserLoggedIn) {
+          // If logged in via Supabase, fetch credits from database
+          if (isSupabaseLoggedIn && data.session) {
+            console.log("Fetching user profile for:", data.session.user.email)
 
-          if (!profileError && profileData) {
-            setUserCredits(profileData.credits || 0)
+            try {
+              const { data: profileData, error: profileError } = await supabase
+                .from("profiles")
+                .select("credits, username, full_name")
+                .eq("id", data.session.user.id)
+                .single()
+
+              if (!profileError && profileData) {
+                console.log("User profile loaded:", profileData)
+                setUserCredits(profileData.credits || 100)
+              } else {
+                console.error("Profile fetch error:", profileError)
+                setUserCredits(100)
+              }
+            } catch (err) {
+              console.error("Error fetching Supabase credits:", err)
+              setUserCredits(100)
+            }
+          }
+          // If logged in via LIFF, try to fetch by LINE user ID
+          else if (isLiffLoggedIn && liffProfile) {
+            try {
+              const { data: lineUserData, error: lineUserError } = await supabase
+                .from("profiles")
+                .select("credits")
+                .eq("line_user_id", liffProfile.userId)
+                .single()
+
+              if (!lineUserError && lineUserData) {
+                setUserCredits(lineUserData.credits || 100)
+              } else {
+                setUserCredits(100)
+              }
+            } catch (err) {
+              console.error("Error fetching LINE user credits:", err)
+              setUserCredits(100)
+            }
           }
         }
       } catch (error) {
@@ -96,7 +165,7 @@ export default function RoomReservation() {
     }
 
     checkSession()
-  }, [supabase])
+  }, [supabase, isLiffLoggedIn, liffProfile])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
@@ -246,6 +315,12 @@ export default function RoomReservation() {
   const handleCreateReservation = () => {
     if (loading || !currentRoom.id) return
 
+    // Check if user is logged in
+    if (!isLoggedIn) {
+      router.push("/login")
+      return
+    }
+
     // Format the selected date as YYYY-MM-DD in local timezone
     const formattedDate = formatDateForDatabase(selectedDate)
 
@@ -281,12 +356,17 @@ export default function RoomReservation() {
         <h1 className="text-xl font-semibold">
           <span className="text-[#D4AF37]">INTA</span>ROOM
         </h1>
-        {isLoggedIn && (
+        {isLoggedIn ? (
           <div className="flex gap-2 items-center">
             {/* Credits display */}
             <div className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-[#6D3B3B] rounded-full mr-1">
               <Coins className="h-4 w-4 text-[#D4AF37]" />
               <span className="text-sm font-medium">{userCredits} Credits</span>
+            </div>
+
+            {/* LINE Profile */}
+            <div className="hidden sm:block">
+              <LineProfile />
             </div>
 
             <div className="flex space-x-1">
@@ -303,6 +383,23 @@ export default function RoomReservation() {
               <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
             </div>
           </div>
+        ) : (
+          <Button
+            onClick={() => router.push("/login")}
+            className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
+          >
+            Login
+          </Button>
+        )}
+        {process.env.NODE_ENV === "development" && (
+          <Button
+            onClick={() => router.push("/test-auth")}
+            variant="outline"
+            className="ml-2 text-white border-white/30 hover:bg-white/10"
+            size="sm"
+          >
+            Test Auth
+          </Button>
         )}
       </div>
 
@@ -501,8 +598,10 @@ export default function RoomReservation() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Loading...
                 </>
-              ) : (
+              ) : isLoggedIn ? (
                 "Create a New Reservation"
+              ) : (
+                "Login to Create Reservation"
               )}
             </Button>
           </div>
