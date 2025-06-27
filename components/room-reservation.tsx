@@ -125,13 +125,17 @@ export default function RoomReservation() {
                 .from("profiles")
                 .select("credits, username, full_name")
                 .eq("id", data.session.user.id)
-                .single()
 
-              if (!profileError && profileData) {
-                console.log("User profile loaded:", profileData)
-                setUserCredits(profileData.credits || 100)
-              } else {
+              if (profileError) {
                 console.error("Profile fetch error:", profileError)
+                setUserCredits(100)
+              } else if (profileData && profileData.length > 0) {
+                // Use the first profile if multiple exist
+                const profile = profileData[0]
+                console.log("User profile loaded:", profile)
+                setUserCredits(profile.credits || 100)
+              } else {
+                console.log("No profile found, using default credits")
                 setUserCredits(100)
               }
             } catch (err) {
@@ -146,11 +150,15 @@ export default function RoomReservation() {
                 .from("profiles")
                 .select("credits")
                 .eq("line_user_id", liffProfile.userId)
-                .single()
 
-              if (!lineUserError && lineUserData) {
-                setUserCredits(lineUserData.credits || 100)
+              if (lineUserError) {
+                console.error("LINE user fetch error:", lineUserError)
+                setUserCredits(100)
+              } else if (lineUserData && lineUserData.length > 0) {
+                // Use the first profile if multiple exist
+                setUserCredits(lineUserData[0].credits || 100)
               } else {
+                console.log("No LINE user profile found, using default credits")
                 setUserCredits(100)
               }
             } catch (err) {
