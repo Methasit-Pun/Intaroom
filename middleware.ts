@@ -5,27 +5,9 @@ import type { NextRequest } from "next/server"
 // Update the middleware to handle admin login better
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-
-  // Create supabase client with cookies
   const supabase = createMiddlewareClient({ req, res })
 
-  // Check if this is an admin route
   const isAdminRoute = req.nextUrl.pathname.startsWith("/admin")
-
-  // Check for admin cookie
-  const adminCookie = req.cookies.get("isAdmin")?.value === "true"
-
-  // If this is an admin route and we have the admin cookie, allow access immediately
-  if (isAdminRoute && adminCookie) {
-    return res
-  }
-
-  // For non-admin routes or if no admin cookie, proceed with normal auth checks
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
-  // Define auth routes that don't require authentication
   const isAuthRoute =
     req.nextUrl.pathname.startsWith("/login") ||
     req.nextUrl.pathname.startsWith("/register") ||
@@ -34,31 +16,31 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/register-success") ||
     req.nextUrl.pathname.startsWith("/reset-password")
 
-  // If trying to access admin route without admin cookie or session, redirect to login
-  if (isAdminRoute && !session && !adminCookie) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = "/login"
-    return NextResponse.redirect(redirectUrl)
+  // Handle admin routes
+  if (isAdminRoute) {
+    const adminCookie = req.cookies.get("isAdmin")?.value === "true"
+    if (!adminCookie) {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/login"
+      return NextResponse.redirect(redirectUrl)
+    }
+    return res
   }
 
-  // If no session and trying to access protected routes, redirect to login
-  if (!session && !isAuthRoute && !adminCookie) {
+  // Allow auth routes without session check
+  if (isAuthRoute) {
+    return res
+  }
+
+  // For all other routes, check session
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (!session) {
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = "/login"
     redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // If session exists and trying to access auth routes, redirect appropriately
-  if ((session || adminCookie) && isAuthRoute) {
-    const redirectUrl = req.nextUrl.clone()
-
-    if (adminCookie) {
-      redirectUrl.pathname = "/admin"
-    } else {
-      redirectUrl.pathname = "/"
-    }
-
     return NextResponse.redirect(redirectUrl)
   }
 
