@@ -230,7 +230,7 @@ export default function LoginPage() {
 
           console.log("🎉 Login successful, redirecting to main page")
           // Successful login - redirect to main page
-          router.push("/")
+          await router.push("/")
         } catch (authError: any) {
           console.error("❌ Authentication process failed:", authError)
           throw authError
