@@ -96,6 +96,8 @@ export function convertFrom24To12Format(timeString: string): string {
   let hour = Number.parseInt(hourStr)
   const period = hour >= 12 ? "PM" : "AM"
 
+
+  
   // Convert to 12-hour format
   if (hour > 12) hour -= 12
   if (hour === 0) hour = 12
