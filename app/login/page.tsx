@@ -39,47 +39,64 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Check if already logged in
+  // Replace the existing useEffect with this single consolidated one
   useEffect(() => {
-    const checkSession = async () => {
+    const checkAuthState = async () => {
       try {
-        // Check if admin is already logged in via localStorage
+        // Prevent multiple simultaneous checks
+        if (loading) return
+
+        console.log("🔍 Checking authentication state...")
+
+        // Check admin login first (highest priority)
         if (localStorage.getItem("isAdmin") === "true") {
+          console.log("👑 Admin already logged in, redirecting to admin panel")
           router.push("/admin")
           return
         }
 
-        // Check if logged in via LINE
+        // Check LINE login
         if (isLoggedIn && profile) {
-          // Check if user has completed profile setup
-          const { data: userProfile } = await supabase
-            .from("profiles")
-            .select("full_name, telephone")
-            .eq("line_user_id", profile.userId)
-            .single()
+          console.log("📱 LINE user logged in, checking profile completion")
+          try {
+            const { data: userProfile } = await supabase
+              .from("profiles")
+              .select("full_name, telephone")
+              .eq("line_user_id", profile.userId)
+              .single()
 
-          if (userProfile && userProfile.full_name && userProfile.telephone) {
-            router.push("/")
-          } else {
+            if (userProfile && userProfile.full_name && userProfile.telephone) {
+              console.log("✅ LINE user profile complete, redirecting to main page")
+              router.push("/")
+            } else {
+              console.log("⚠️ LINE user profile incomplete, redirecting to profile setup")
+              router.push("/profile?setup=true")
+            }
+          } catch (error) {
+            console.error("❌ Error checking LINE user profile:", error)
             router.push("/profile?setup=true")
           }
           return
         }
 
-        // For regular users, check Supabase session
+        // Check Supabase session (lowest priority)
         const { data } = await supabase.auth.getSession()
         if (data.session) {
+          console.log("🔐 Supabase session found, redirecting to main page")
           router.push("/")
+          return
         }
+
+        console.log("🚫 No active sessions found")
       } catch (error) {
-        console.error("Session check error:", error)
+        console.error("❌ Auth state check error:", error)
       }
     }
 
-    checkSession()
-  }, [router, supabase, isLoggedIn, profile])
+    // Only run the check once when component mounts and dependencies change
+    checkAuthState()
+  }, [router, supabase, isLoggedIn, profile]) // Removed loading from dependencies to prevent loops
 
-  // Handle login with separate flows for admin and regular users
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -94,8 +111,10 @@ export default function LoginPage() {
           localStorage.setItem("isAdmin", "true")
           localStorage.setItem("adminEmail", username)
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
-          console.log("✅ Admin login successful")
-          router.push("/admin")
+          console.log("✅ Admin login successful, redirecting...")
+
+          // Force immediate redirect for admin
+          window.location.href = "/admin"
           return
         } else {
           throw new Error("Invalid admin credentials")
@@ -116,24 +135,10 @@ export default function LoginPage() {
               .eq("username", username)
               .single()
 
-            console.log("📊 Profile lookup result:", {
-              profileData: profileData ? { ...profileData, email: profileData.email } : null,
-              profileError: profileError
-                ? {
-                    message: profileError.message,
-                    code: profileError.code,
-                    details: profileError.details,
-                  }
-                : null,
-            })
-
             if (profileError) {
               console.error("❌ Profile lookup error:", profileError)
-
               if (profileError.code === "PGRST116") {
                 throw new Error("Username not found. Please check your username or register a new account.")
-              } else if (profileError.message.includes("permission denied")) {
-                throw new Error("Database access error. Please contact support.")
               } else {
                 throw new Error(`Profile lookup failed: ${profileError.message}`)
               }
@@ -155,93 +160,56 @@ export default function LoginPage() {
         // Now login with the email
         console.log("🔑 Attempting Supabase authentication with email:", email)
 
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: password,
-          })
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        })
 
-          // Detailed error logging
-          console.log("🔐 Supabase auth result:", {
-            success: !!data.user,
-            userId: data.user?.id,
-            userEmail: data.user?.email,
-            emailConfirmed: data.user?.email_confirmed_at,
-            error: error
-              ? {
-                  message: error.message,
-                  status: error.status,
-                  name: error.name,
-                }
-              : null,
-            session: !!data.session,
-          })
+        if (error) {
+          console.error("❌ Supabase authentication error:", error)
 
-          if (error) {
-            console.error("❌ Supabase authentication error:", {
-              message: error.message,
-              status: error.status,
-              name: error.name,
-              stack: error.stack,
-            })
-
-            // Provide more specific error messages based on error type
-            if (error.message.includes("Invalid login credentials")) {
-              throw new Error("Invalid username or password. Please check your credentials and try again.")
-            } else if (error.message.includes("Email not confirmed")) {
-              throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
-            } else if (error.message.includes("Too many requests")) {
-              throw new Error("Too many login attempts. Please wait a few minutes before trying again.")
-            } else if (error.message.includes("User not found")) {
-              throw new Error("Account not found. Please check your credentials or register a new account.")
-            } else if (error.status === 400) {
-              throw new Error("Invalid request. Please check your username and password format.")
-            } else if (error.status === 422) {
-              throw new Error("Invalid email format. Please use a valid email address.")
-            } else {
-              throw new Error(`Authentication failed: ${error.message}`)
-            }
-          }
-
-          if (!data.user) {
-            throw new Error("Login failed. No user data received from authentication service.")
-          }
-
-          console.log("✅ Authentication successful for user:", data.user.id)
-
-          // Check if email is verified for user accounts
-          if (!data.user.email_confirmed_at) {
-            console.warn("⚠️ User email not confirmed, signing out")
-            await supabase.auth.signOut()
+          if (error.message.includes("Invalid login credentials")) {
+            throw new Error("Invalid username or password. Please check your credentials and try again.")
+          } else if (error.message.includes("Email not confirmed")) {
             throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+          } else {
+            throw new Error(`Authentication failed: ${error.message}`)
           }
-
-          // Store user info in localStorage for quick access
-          if (userProfile) {
-            const userData = {
-              id: data.user.id,
-              email: data.user.email,
-              username: userProfile.username,
-              full_name: userProfile.full_name,
-            }
-            localStorage.setItem("currentUser", JSON.stringify(userData))
-            console.log("💾 User data stored in localStorage:", userData)
-          }
-
-          console.log("🎉 Login successful, redirecting to main page")
-          // Successful login - redirect to main page
-          router.push("/")
-        } catch (authError: any) {
-          console.error("❌ Authentication process failed:", authError)
-          throw authError
         }
+
+        if (!data.user) {
+          throw new Error("Login failed. No user data received from authentication service.")
+        }
+
+        console.log("✅ Authentication successful for user:", data.user.id)
+
+        // Check if email is verified
+        if (!data.user.email_confirmed_at) {
+          console.warn("⚠️ User email not confirmed, signing out")
+          await supabase.auth.signOut()
+          throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+        }
+
+        // Store user info in localStorage for quick access
+        if (userProfile) {
+          const userData = {
+            id: data.user.id,
+            email: data.user.email,
+            username: userProfile.username,
+            full_name: userProfile.full_name,
+          }
+          localStorage.setItem("currentUser", JSON.stringify(userData))
+          console.log("💾 User data stored in localStorage:", userData)
+        }
+
+        console.log("🎉 Login successful, redirecting to main page")
+
+        // Force immediate redirect for regular users
+        window.location.href = "/"
+        return
       }
     } catch (error: any) {
-      console.error("❌ Overall login error:", {
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString(),
-      })
+      console.error("❌ Overall login error:", error)
       setError(error.message || "Failed to login. Please try again.")
     } finally {
       setLoading(false)

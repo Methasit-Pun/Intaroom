@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const type = requestUrl.searchParams.get("type")
   if (type === "email_confirmation" || type === "recovery") {
     // Redirect directly to login page with a success parameter
-    return NextResponse.redirect(`${requestUrl.origin}/login?verified=true`)
+    return NextResponse.redirect(`https://intaroom.vercel.app/login`)
   }
 
   return NextResponse.redirect(requestUrl.origin)
