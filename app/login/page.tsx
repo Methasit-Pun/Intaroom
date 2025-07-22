@@ -260,7 +260,7 @@ export default function LoginPage() {
             Admin
           </button>
         </div>
-
+{/* 
         {userType === "user" && (
           <div className="mb-6">
             <LineLoginButton />
@@ -273,7 +273,7 @@ export default function LoginPage() {
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
@@ -349,13 +349,13 @@ export default function LoginPage() {
         )}
 
         {/* Debug info in development */}
-        {process.env.NODE_ENV === "development" && (
+        {/* {process.env.NODE_ENV === "development" && (
           <div className="mt-4 p-3 bg-black/20 rounded-lg text-xs text-white/70">
             <p>🔧 Debug Mode: Detailed logging enabled</p>
             <p>📊 Check browser console for authentication details</p>
             <p>🧪 Test credentials: MB / abc123</p>
           </div>
-        )}
+        )} */}
       </div>
     </div>
   )

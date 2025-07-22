@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import LogoutButton from "@/components/logout-button"
 
+
 interface Reservation {
   id: number
   booking_name: string
@@ -120,38 +121,40 @@ export default function MyReservationsPage() {
         return
       }
 
-      // Fetch user's reservations
+      // Fetch user's reservations with room data in a single query
       const { data: reservationsData, error: reservationsError } = await supabase
         .from("reservations")
-        .select("id, booking_name, room_id, date, start_time, end_time, status, confirmation_number")
+        .select(`
+          id, 
+          booking_name, 
+          room_id, 
+          date, 
+          start_time, 
+          end_time, 
+          status, 
+          confirmation_number,
+          rooms (
+            id,
+            name
+          )
+        `)
         .eq("user_id", session.user.id)
         .order("date", { ascending: false })
 
       if (reservationsError) throw reservationsError
 
-      // Fetch room names for each reservation
-      const reservationsWithRoomNames = await Promise.all(
-        (reservationsData || []).map(async (reservation) => {
-          try {
-            const { data: roomData } = await supabase
-              .from("rooms")
-              .select("name")
-              .eq("id", reservation.room_id)
-              .single()
-
-            return {
-              ...reservation,
-              room_name: roomData?.name || `Room ${reservation.room_id}`,
-            }
-          } catch (error) {
-            console.error("Error fetching room name:", error)
-            return {
-              ...reservation,
-              room_name: `Room ${reservation.room_id}`,
-            }
-          }
-        }),
-      )
+      // Transform the data to include room names
+      const reservationsWithRoomNames = (reservationsData || []).map((reservation: any) => ({
+        id: reservation.id,
+        booking_name: reservation.booking_name,
+        room_id: reservation.room_id,
+        date: reservation.date,
+        start_time: reservation.start_time,
+        end_time: reservation.end_time,
+        status: reservation.status,
+        confirmation_number: reservation.confirmation_number,
+        room_name: reservation.rooms?.name || `Room ${reservation.room_id}`,
+      }))
 
       setReservations(reservationsWithRoomNames)
     } catch (error: any) {
@@ -228,25 +231,12 @@ export default function MyReservationsPage() {
   })
 
   const handleViewDetails = (reservation: GroupedReservation) => {
-    // Navigate to summary page with reservation details
+    // Navigate to reservation details page
     const params = new URLSearchParams()
-    params.set("bookingName", reservation.booking_name)
-    params.set("roomId", reservation.room_id.toString())
-    params.set("roomName", reservation.room_name || `Room ${reservation.room_id}`)
+    params.set("confirmation", reservation.confirmation_number)
     params.set("date", reservation.date)
 
-    // Create time slots array from start and end times
-    const timeSlots = reservation.time_slots.map((slot) => {
-      const startHour = Number.parseInt(slot.start_time.split(":")[0])
-      const period = startHour >= 12 ? "PM" : "AM"
-      const displayHour = startHour % 12 === 0 ? 12 : startHour % 12
-      return `${displayHour} ${period}`
-    })
-
-    params.set("timeSlots", JSON.stringify(timeSlots))
-    params.set("confirmationNumber", reservation.confirmation_number)
-
-    router.push(`/summary?${params.toString()}`)
+    router.push(`/reservation-details?${params.toString()}`)
   }
 
   return (

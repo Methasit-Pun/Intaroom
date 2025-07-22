@@ -18,7 +18,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         {children}
-        <AuthDebug />
+        {/* <AuthDebug /> */}
       </body>
     </html>
   )
