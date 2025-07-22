@@ -24,12 +24,19 @@ export default function AuthDebug() {
   const refreshData = async () => {
     setLoading(true)
     try {
+      console.log("🔄 Refreshing auth debug data...")
+      
       // Get Supabase session
-      const { data: sessionData } = await supabase.auth.getSession()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       setSupabaseSession(sessionData.session)
+      
+      if (sessionError) {
+        console.error("❌ Session error:", sessionError)
+      }
 
       // Get profile data if we have a session
       if (sessionData.session) {
+        console.log("📊 Getting profile for session user:", sessionData.session.user.id)
         const { data: profileData } = await supabase
           .from("profiles")
           .select("*")
@@ -37,6 +44,7 @@ export default function AuthDebug() {
           .single()
         setProfileData(profileData)
       } else if (profile?.userId) {
+        console.log("📊 Getting profile for LINE user:", profile.userId)
         // Try to get profile by LINE user ID
         const { data: lineProfileData } = await supabase
           .from("profiles")
@@ -46,7 +54,7 @@ export default function AuthDebug() {
         setProfileData(lineProfileData)
       }
     } catch (error) {
-      console.error("Error refreshing debug data:", error)
+      console.error("❌ Error refreshing debug data:", error)
     } finally {
       setLoading(false)
     }

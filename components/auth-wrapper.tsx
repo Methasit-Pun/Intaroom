@@ -24,37 +24,53 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
     useEffect(() => {
         const checkAuthentication = async () => {
             try {
+                console.log("🔒 AuthWrapper: Checking authentication state...")
+                console.log("🌍 Environment:", process.env.NODE_ENV)
+                
                 // Check if user is admin (highest priority)
                 if (typeof window !== "undefined") {
                     const isAdmin = localStorage.getItem("isAdmin") === "true";
                     if (isAdmin) {
+                        console.log("👑 AuthWrapper: Admin session found")
                         setIsAuthenticated(true);
                         setIsLoading(false);
                         return;
                     }
                 }
 
-
-
-                
                 // Check Supabase session
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session }, error } = await supabase.auth.getSession();
                 
+                if (error) {
+                    console.error("❌ AuthWrapper: Session check error:", error)
+                }
+
                 // User is authenticated if they have either:
                 // 1. A valid Supabase session, OR
                 // 2. Are logged in with LINE LIFF
                 const hasSupabaseSession = !!session;
                 const hasLiffAuth = liffReady && isLiffLoggedIn;
                 
+                console.log("🔍 AuthWrapper: Auth status check:", {
+                    hasSupabaseSession,
+                    hasLiffAuth,
+                    liffReady,
+                    isLiffLoggedIn,
+                    sessionUserId: session?.user?.id
+                })
+                
                 const authenticated = hasSupabaseSession || hasLiffAuth;
                 
                 setIsAuthenticated(authenticated);
                 
                 if (!authenticated) {
+                    console.log("🚫 AuthWrapper: Not authenticated, redirecting to login")
                     router.replace("/login");
+                } else {
+                    console.log("✅ AuthWrapper: User is authenticated")
                 }
             } catch (error) {
-                console.error("Authentication check error:", error);
+                console.error("❌ AuthWrapper: Authentication check error:", error);
                 setIsAuthenticated(false);
                 router.replace("/login");
             } finally {

@@ -12,6 +12,7 @@ import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2, AlertCircle } from "lucide-react"
 import LineLoginButton from "@/components/line-login-button"
 import { useLiff } from "@/components/liff-provider"
+import AuthDebug from "@/components/auth-debug"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -47,6 +48,8 @@ export default function LoginPage() {
         if (loading) return
 
         console.log("🔍 Checking authentication state...")
+        console.log("🌍 Environment:", process.env.NODE_ENV)
+        console.log("🔗 Current URL:", window.location.href)
 
         // Check admin login first (highest priority)
         if (localStorage.getItem("isAdmin") === "true") {
@@ -83,6 +86,7 @@ export default function LoginPage() {
         const { data } = await supabase.auth.getSession()
         if (data.session) {
           console.log("🔐 Supabase session found, redirecting to main page")
+          console.log("👤 Session user:", data.session.user.email)
           router.push("/")
           return
         }
@@ -104,6 +108,13 @@ export default function LoginPage() {
 
     console.log("🔐 Login attempt started:", { username, userType, timestamp: new Date().toISOString() })
 
+    // Add timeout to prevent infinite loading states
+    const loginTimeout = setTimeout(() => {
+      setLoading(false)
+      setError("Login is taking too long. Please try again.")
+      console.error("⏰ Login timeout reached")
+    }, 15000) // 15 seconds timeout
+
     try {
       if (userType === "admin") {
         // Admin login - completely bypass Supabase auth
@@ -113,8 +124,8 @@ export default function LoginPage() {
           document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
           console.log("✅ Admin login successful, redirecting...")
 
-          // Force immediate redirect for admin
-          window.location.href = "/admin"
+          // Use router for navigation instead of window.location
+          router.push("/admin")
           return
         } else {
           throw new Error("Invalid admin credentials")
@@ -204,12 +215,16 @@ export default function LoginPage() {
 
         console.log("🎉 Login successful, redirecting to main page")
 
-        // Force immediate redirect for regular users
-        window.location.href = "/"
+        // Clear the timeout since login was successful
+        clearTimeout(loginTimeout)
+
+        // Use router for navigation instead of window.location
+        router.push("/")
         return
       }
     } catch (error: any) {
       console.error("❌ Overall login error:", error)
+      clearTimeout(loginTimeout) // Clear timeout on error too
       setError(error.message || "Failed to login. Please try again.")
     } finally {
       setLoading(false)
@@ -357,6 +372,9 @@ export default function LoginPage() {
           </div>
         )} */}
       </div>
+      
+      {/* Auth Debug Component */}
+      <AuthDebug />
     </div>
   )
 }
