@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   const type = requestUrl.searchParams.get("type")
   if (type === "email_confirmation" || type === "recovery") {
     // Redirect to login page with a success parameter using dynamic origin
-    return NextResponse.redirect(`${requestUrl.origin}/login?verified=true`)
+    // return NextResponse.redirect(`${requestUrl.origin}/login?verified=true`)
+    return NextResponse.redirect(`https://intaroomv2.vercel.app/login?verified=true`)
   }
 
   return NextResponse.redirect(requestUrl.origin)

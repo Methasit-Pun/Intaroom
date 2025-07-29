@@ -12,7 +12,7 @@ export default function Home() {
       <main className="min-h-screen">
         <AuthWrapper>
           <RoomReservation />
-          <MobileCreditsDisplay />
+          {/* <MobileCreditsDisplay /> */}
         </AuthWrapper>
       </main>
     </LiffProvider>

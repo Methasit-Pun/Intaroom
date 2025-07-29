@@ -24,14 +24,6 @@ export default function RegisterPage() {
     supabaseKey: supabaseAnonKey,
   })
 
-  const validateEmail = (email: string) => {
-    // Check if email contains chula.ac.th
-    if (!email.toLowerCase().includes("chula.ac.th")) {
-      return "Please use your Chulalongkorn University email (@chula.ac.th)"
-    }
-    return null
-  }
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -39,13 +31,6 @@ export default function RegisterPage() {
     // Validate passwords match
     if (password !== confirmPassword) {
       setError("Passwords do not match")
-      return
-    }
-
-    // Validate email is a Chula email
-    const emailError = validateEmail(email)
-    if (emailError) {
-      setError(emailError)
       return
     }
 
@@ -101,8 +86,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
-      <div className="w-full max-w-md p-6 rounded-3xl bg-[#6D3B3B]">
+    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md mx-auto p-6 rounded-3xl bg-[#6D3B3B]">
         <h1 className="text-2xl font-semibold text-white text-center mb-6">Register</h1>
 
         {error && (
@@ -137,13 +122,12 @@ export default function RegisterPage() {
             <div>
               <input
                 type="email"
-                placeholder="Chula Email (@chula.ac.th)"
+                placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
               />
-              <p className="text-xs text-white/70 mt-1 ml-2">Only Chulalongkorn University emails are allowed</p>
             </div>
 
             <div>
@@ -188,3 +172,4 @@ export default function RegisterPage() {
     </div>
   )
 }
+

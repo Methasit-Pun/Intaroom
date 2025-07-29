@@ -180,7 +180,7 @@ export default function AdminPage() {
     }
   }, [reservations, analyticsTimeFrame])
 
-  // Group reservations by confirmation number base AND date
+  // Group reservations by confirmation number base AND date AND room
   useEffect(() => {
     if (reservations.length > 0) {
       const grouped: { [key: string]: GroupedReservation } = {}
@@ -189,8 +189,8 @@ export default function AdminPage() {
         // Extract the base confirmation number (before the dash or the whole if no dash)
         const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-        // Create a unique key combining the confirmation base and date
-        const groupKey = `${baseConfirmation}-${reservation.date}`
+        // Create a unique key combining the confirmation base, date, and room_id
+        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
 
         if (!grouped[groupKey]) {
           grouped[groupKey] = {
@@ -426,6 +426,40 @@ export default function AdminPage() {
     })
   }
 
+  // Generate QR code text with longer, more secure format
+  const generateQRCodeText = (reservation: GroupedReservation) => {
+    const roomPrefix = "INR"
+    const cleanConfirmation = reservation.confirmation_number.replace(/[^0-9]/g, "")
+    const roomId = reservation.room_id.toString().padStart(2, "0")
+    const dateCode = reservation.date.replace(/-/g, "").slice(2) // YYMMDD format
+    const timeCode = reservation.time_slots[0]?.start_time.replace(":", "") || "0000"
+
+    // Generate longer code: INR + room_id + date + time + confirmation
+    return `${roomPrefix}${roomId}${dateCode}${timeCode}${cleanConfirmation}`
+  }
+
+  // Store QR code text in database for approved reservations
+  const storeQRCodeForApprovedReservation = async (reservation: GroupedReservation) => {
+    try {
+      const qrCodeText = generateQRCodeText(reservation)
+      
+      const { error } = await supabase
+        .from("reservations")
+        .update({ "qr_code_url": qrCodeText })
+        .eq("confirmation_number", reservation.confirmation_number)
+        .eq("date", reservation.date)
+        .eq("room_id", reservation.room_id)
+
+      if (error) {
+        console.error("Error storing QR code text:", error)
+      } else {
+        console.log("QR code text stored successfully for reservation:", reservation.confirmation_number)
+      }
+    } catch (error) {
+      console.error("Failed to store QR code text:", error)
+    }
+  }
+
   // Handle toggle sort direction
   const toggleSortDirection = () => {
     setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
@@ -471,6 +505,14 @@ export default function AdminPage() {
         supabaseKey: supabaseAnonKey,
       })
 
+      // Find the reservation being approved to get its details for QR code generation
+      let approvedReservation: GroupedReservation | null = null
+      if (confirmDialog.action === "approve") {
+        approvedReservation = groupedReservations.find(res => 
+          res.ids.some(id => confirmDialog.ids?.includes(id))
+        ) || null
+      }
+
       // Update all reservations in the group
       for (const id of confirmDialog.ids) {
         const { error } = await supabase
@@ -482,6 +524,11 @@ export default function AdminPage() {
           .eq("id", id)
 
         if (error) throw error
+      }
+
+      // If approving, generate and store QR code
+      if (confirmDialog.action === "approve" && approvedReservation) {
+        await storeQRCodeForApprovedReservation(approvedReservation)
       }
 
       // Refresh the reservations list

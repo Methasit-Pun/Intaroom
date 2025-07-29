@@ -54,7 +54,7 @@ export default function MyReservationsPage() {
     fetchReservations()
   }, [])
 
-  // Group reservations by confirmation number base AND date
+  // Group reservations by confirmation number base AND date AND room
   useEffect(() => {
     if (reservations.length > 0) {
       const grouped: { [key: string]: GroupedReservation } = {}
@@ -63,8 +63,8 @@ export default function MyReservationsPage() {
         // Extract the base confirmation number (before the dash or the whole if no dash)
         const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-        // Create a unique key combining the confirmation base and date
-        const groupKey = `${baseConfirmation}-${reservation.date}`
+        // Create a unique key combining the confirmation base, date, and room_id
+        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
 
         if (!grouped[groupKey]) {
           grouped[groupKey] = {
@@ -231,10 +231,11 @@ export default function MyReservationsPage() {
   })
 
   const handleViewDetails = (reservation: GroupedReservation) => {
-    // Navigate to reservation details page
+    // Navigate to reservation details page with room ID
     const params = new URLSearchParams()
     params.set("confirmation", reservation.confirmation_number)
     params.set("date", reservation.date)
+    params.set("roomId", reservation.room_id.toString())
 
     router.push(`/reservation-details?${params.toString()}`)
   }
@@ -246,7 +247,7 @@ export default function MyReservationsPage() {
         <div className="flex items-center">
           <Button variant="ghost" className="text-white hover:bg-white/10 mr-2 -ml-2" onClick={() => router.push("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Home
+            <span className="hidden sm:inline">Home</span>
           </Button>
         </div>
         <h1 className="text-xl font-semibold text-center flex-1">
