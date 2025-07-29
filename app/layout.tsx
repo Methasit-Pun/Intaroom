@@ -4,9 +4,9 @@ import "./globals.css"
 import AuthDebug from "@/components/auth-debug"
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.dev",
+  title: "Intaroom",
+  description: "Created by Eng Enterprise",
+  generator: "Intaroom.dev",
 }
 
 export default function RootLayout({
