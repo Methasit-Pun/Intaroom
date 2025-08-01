@@ -320,7 +320,7 @@ export default function MyReservationsPage() {
               <div className="space-y-4">
                 {filteredReservations.map((reservation) => (
                   <div
-                    key={`${reservation.confirmation_number}-${reservation.date}`}
+                    key={`${reservation.confirmation_number}-${reservation.date}-${reservation.room_id}`}
                     className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

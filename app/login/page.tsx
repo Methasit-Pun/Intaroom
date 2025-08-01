@@ -12,7 +12,7 @@ import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2, AlertCircle } from "lucide-react"
 import LineLoginButton from "@/components/line-login-button"
 import { useLiff } from "@/components/liff-provider"
-import AuthDebug from "@/components/auth-debug"
+// import AuthDebug from "@/components/auth-debug"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -373,8 +373,8 @@ export default function LoginPage() {
         )} */}
       </div>
       
-      {/* Auth Debug Component */}
-      <AuthDebug />
+      {/* Auth Debug Component - Hidden in production */}
+      {/* <AuthDebug /> */}
     </div>
   )
 }

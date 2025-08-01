@@ -1,7 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
-import AuthDebug from "@/components/auth-debug"
+// import AuthDebug from "@/components/auth-debug"
 
 export const metadata: Metadata = {
   title: "Intaroom",

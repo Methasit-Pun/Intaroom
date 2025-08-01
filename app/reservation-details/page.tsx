@@ -19,47 +19,21 @@ import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
-
-interface ReservationDetail {
-  id: number
-  booking_name: string
-  room_id: number
-  date: string
-  start_time: string
-  end_time: string
-  status: "Pending" | "Approved" | "Rejected"
-  confirmation_number: string
-  purpose: string
-  attendees: number
-  contact_email: string
-  contact_phone?: string
-  room_name?: string
-  room_capacity?: number
-  room_description?: string
-  created_at: string
-}
-
-interface GroupedReservation {
-  booking_name: string
-  room_id: number
-  date: string
-  time_slots: { start_time: string; end_time: string }[]
-  status: "Pending" | "Approved" | "Rejected"
-  confirmation_number: string
-  purpose: string
-  attendees: number
-  contact_email: string
-  contact_phone?: string
-  room_name?: string
-  room_capacity?: number
-  room_description?: string
-  created_at: string
-}
+import {
+  type GroupedReservation,
+  generateQRCodeText,
+  generateQRCodeForRecord,
+  storeQRCodeForApprovedReservation,
+  formatDate,
+  formatTime,
+  formatTimeSlots,
+} from "@/lib/reservation-utils"
 
 export default function ReservationDetailsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [reservation, setReservation] = useState<GroupedReservation | null>(null)
+  const [individualReservations, setIndividualReservations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -148,8 +122,10 @@ export default function ReservationDetailsPage() {
 
       // Group the reservations by confirmation number, date, and room
       const groupedReservation: GroupedReservation = {
+        ids: reservationsData.map(r => r.id),
         booking_name: reservationsData[0].booking_name,
         room_id: reservationsData[0].room_id,
+        user_id: reservationsData[0].user_id,
         date: reservationsData[0].date,
         time_slots: reservationsData.map((r: any) => ({
           start_time: r.start_time,
@@ -168,6 +144,7 @@ export default function ReservationDetailsPage() {
       }
 
       setReservation(groupedReservation)
+      setIndividualReservations(reservationsData) // Store individual reservations for QR code generation
     } catch (error: any) {
       console.error("Error fetching reservation details:", error)
       setError(error.message || "Failed to load reservation details")
@@ -175,90 +152,29 @@ export default function ReservationDetailsPage() {
       setLoading(false)
     }
   }
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    })
-  }
-
-  // Format time for display
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(":")
-    const hour = Number.parseInt(hours)
-    const period = hour >= 12 ? "PM" : "AM"
-    const formattedHour = hour % 12 === 0 ? 12 : hour % 12
-    return `${formattedHour}:${minutes} ${period}`
-  }
-
-  // Format time slots for display
-  const formatTimeSlots = (timeSlots: { start_time: string; end_time: string }[]) => {
-    if (!timeSlots.length) return "N/A"
-
-    const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time))
-
-    // Check if slots are consecutive
-    let isConsecutive = true
-    for (let i = 0; i < sortedSlots.length - 1; i++) {
-      const currentEndHour = Number.parseInt(sortedSlots[i].end_time.split(":")[0])
-      const nextStartHour = Number.parseInt(sortedSlots[i + 1].start_time.split(":")[0])
-      if (currentEndHour !== nextStartHour) {
-        isConsecutive = false
-        break
-      }
-    }
-
-    if (isConsecutive && sortedSlots.length > 1) {
-      return `${formatTime(sortedSlots[0].start_time)} - ${formatTime(sortedSlots[sortedSlots.length - 1].end_time)}`
-    } else {
-      return sortedSlots.map((slot) => `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`).join(", ")
-    }
-  }
-
-  // Generate QR code text with longer, more secure format
-  const generateQRCodeText = (reservation: GroupedReservation) => {
-    const roomPrefix = "INR"
-    const cleanConfirmation = reservation.confirmation_number.replace(/[^0-9]/g, "")
-    const roomId = reservation.room_id.toString().padStart(2, "0")
-    const dateCode = reservation.date.replace(/-/g, "").slice(2) // YYMMDD format
-    const timeCode = reservation.time_slots[0]?.start_time.replace(":", "") || "0000"
-
-    // Generate longer code: INR + room_id + date + time + confirmation
-    return `${roomPrefix}${roomId}${dateCode}${timeCode}${cleanConfirmation}`
-  }
-
-  // Store QR code text in database
-  const storeQRCodeText = async (reservation: GroupedReservation, qrCodeText: string) => {
-    try {
-      const { error } = await supabase
-        .from("reservations")
-        .update({ qr_code_url: qrCodeText })
-        .eq("confirmation_number", reservation.confirmation_number)
-        .eq("date", reservation.date)
-        .eq("room_id", reservation.room_id)
-
-      if (error) {
-        console.error("Error storing QR code text:", error)
-      } else {
-        console.log("QR code text stored successfully")
-      }
-    } catch (error) {
-      console.error("Failed to store QR code text:", error)
-    }
-  }
-
-  // Generate and store QR code text
+  // Generate and store QR code text for the first time slot
   const generateAndStoreQRCode = (reservation: GroupedReservation) => {
-    const qrCodeText = generateQRCodeText(reservation)
+    // Find the first individual reservation (earliest time slot)
+    const firstReservation = individualReservations.find(r => 
+      r.start_time === reservation.time_slots[0].start_time
+    )
     
+    if (!firstReservation) {
+      // Fallback to the grouped reservation method
+      return generateQRCodeText(reservation)
+    }
+
+    // Generate QR code using the individual reservation's confirmation number
+    const qrCodeText = generateQRCodeForRecord({
+      room_id: reservation.room_id,
+      date: reservation.date,
+      start_time: firstReservation.start_time,
+      confirmation_number: firstReservation.confirmation_number
+    })
+
     // Store in database if reservation is approved
     if (reservation.status === "Approved") {
-      storeQRCodeText(reservation, qrCodeText)
+      storeQRCodeForApprovedReservation(reservation, supabaseUrl, supabaseAnonKey)
     }
     
     return qrCodeText

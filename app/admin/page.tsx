@@ -39,43 +39,17 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Line, Bar, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
-// Type for reservation data
-interface Reservation {
-  id: number
-  booking_name: string
-  room_id: number
-  user_id: string
-  date: string
-  start_time: string
-  end_time: string
-  status: "Pending" | "Approved" | "Rejected"
-  purpose: string
-  confirmation_number: string
-  contact_email?: string
-  contact_phone?: string
-  user_name?: string
-  room_name?: string
-  created_at?: string
-}
-
-// Type for grouped reservation data
-interface GroupedReservation {
-  ids: number[]
-  booking_name: string
-  room_id: number
-  user_id: string
-  date: string
-  time_slots: { start_time: string; end_time: string }[]
-  status: "Pending" | "Approved" | "Rejected"
-  purpose: string
-  confirmation_number: string
-  contact_email?: string
-  contact_phone?: string
-  user_name?: string
-  room_name?: string
-  created_at?: string
-}
+import {
+  type Reservation,
+  type GroupedReservation,
+  groupReservations,
+  generateQRCodeText,
+  storeQRCodeForApprovedReservation,
+  updateReservationStatus,
+  formatTimeSlots,
+  formatDateShort,
+  formatDate,
+} from "@/lib/reservation-utils"
 
 // Type for user data
 interface UserType {
@@ -183,66 +157,8 @@ export default function AdminPage() {
   // Group reservations by confirmation number base AND date AND room
   useEffect(() => {
     if (reservations.length > 0) {
-      const grouped: { [key: string]: GroupedReservation } = {}
-
-      reservations.forEach((reservation) => {
-        // Extract the base confirmation number (before the dash or the whole if no dash)
-        const baseConfirmation = reservation.confirmation_number.split("-")[0]
-
-        // Create a unique key combining the confirmation base, date, and room_id
-        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
-
-        if (!grouped[groupKey]) {
-          grouped[groupKey] = {
-            ids: [reservation.id],
-            booking_name: reservation.booking_name,
-            room_id: reservation.room_id,
-            user_id: reservation.user_id,
-            date: reservation.date,
-            time_slots: [{ start_time: reservation.start_time, end_time: reservation.end_time }],
-            status: reservation.status,
-            purpose: reservation.purpose,
-            confirmation_number: baseConfirmation,
-            contact_email: reservation.contact_email,
-            contact_phone: reservation.contact_phone,
-            user_name: reservation.user_name,
-            room_name: reservation.room_name,
-            created_at: reservation.created_at,
-          }
-        } else {
-          grouped[groupKey].ids.push(reservation.id)
-          grouped[groupKey].time_slots.push({
-            start_time: reservation.start_time,
-            end_time: reservation.end_time,
-          })
-
-          // If any reservation in the group is pending, mark the whole group as pending
-          if (reservation.status === "Pending" && grouped[groupKey].status !== "Pending") {
-            grouped[groupKey].status = "Pending"
-          }
-          // If all are approved but one is rejected, mark as rejected
-          else if (reservation.status === "Rejected" && grouped[groupKey].status === "Approved") {
-            grouped[groupKey].status = "Rejected"
-          }
-        }
-      })
-
-      // Sort time slots chronologically for each group
-      Object.values(grouped).forEach((group) => {
-        group.time_slots.sort((a, b) => {
-          return a.start_time.localeCompare(b.start_time)
-        })
-      })
-
-      // Sort by date according to sortDirection
-      const groupedArray = Object.values(grouped)
-      groupedArray.sort((a, b) => {
-        const dateA = new Date(a.date).getTime()
-        const dateB = new Date(b.date).getTime()
-        return sortDirection === "asc" ? dateA - dateB : dateB - dateA
-      })
-
-      setGroupedReservations(groupedArray)
+      const grouped = groupReservations(reservations, sortDirection)
+      setGroupedReservations(grouped)
     }
   }, [reservations, sortDirection])
 
@@ -426,39 +342,7 @@ export default function AdminPage() {
     })
   }
 
-  // Generate QR code text with longer, more secure format
-  const generateQRCodeText = (reservation: GroupedReservation) => {
-    const roomPrefix = "INR"
-    const cleanConfirmation = reservation.confirmation_number.replace(/[^0-9]/g, "")
-    const roomId = reservation.room_id.toString().padStart(2, "0")
-    const dateCode = reservation.date.replace(/-/g, "").slice(2) // YYMMDD format
-    const timeCode = reservation.time_slots[0]?.start_time.replace(":", "") || "0000"
-
-    // Generate longer code: INR + room_id + date + time + confirmation
-    return `${roomPrefix}${roomId}${dateCode}${timeCode}${cleanConfirmation}`
-  }
-
-  // Store QR code text in database for approved reservations
-  const storeQRCodeForApprovedReservation = async (reservation: GroupedReservation) => {
-    try {
-      const qrCodeText = generateQRCodeText(reservation)
-      
-      const { error } = await supabase
-        .from("reservations")
-        .update({ "qr_code_url": qrCodeText })
-        .eq("confirmation_number", reservation.confirmation_number)
-        .eq("date", reservation.date)
-        .eq("room_id", reservation.room_id)
-
-      if (error) {
-        console.error("Error storing QR code text:", error)
-      } else {
-        console.log("QR code text stored successfully for reservation:", reservation.confirmation_number)
-      }
-    } catch (error) {
-      console.error("Failed to store QR code text:", error)
-    }
-  }
+  // Analytics and other functions remain here since they're admin-specific
 
   // Handle toggle sort direction
   const toggleSortDirection = () => {
@@ -499,12 +383,6 @@ export default function AdminPage() {
     setActionLoading(true)
 
     try {
-      // Create a new Supabase client for this request
-      const supabase = createClientComponentClient({
-        supabaseUrl,
-        supabaseKey: supabaseAnonKey,
-      })
-
       // Find the reservation being approved to get its details for QR code generation
       let approvedReservation: GroupedReservation | null = null
       if (confirmDialog.action === "approve") {
@@ -513,22 +391,32 @@ export default function AdminPage() {
         ) || null
       }
 
-      // Update all reservations in the group
-      for (const id of confirmDialog.ids) {
-        const { error } = await supabase
-          .from("reservations")
-          .update({
-            status: confirmDialog.action === "approve" ? "Approved" : "Rejected",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id)
-
-        if (error) throw error
-      }
+      // Update reservation status using utility function
+      await updateReservationStatus(
+        confirmDialog.ids,
+        confirmDialog.action === "approve" ? "Approved" : "Rejected",
+        supabaseUrl,
+        supabaseAnonKey
+      )
 
       // If approving, generate and store QR code
       if (confirmDialog.action === "approve" && approvedReservation) {
-        await storeQRCodeForApprovedReservation(approvedReservation)
+        try {
+          // Generate QR code text for the approved reservation
+          const qrCodeText = generateQRCodeText(approvedReservation)
+          
+          // Store the QR code for all reservation IDs in the group
+          await storeQRCodeForApprovedReservation(
+            approvedReservation,
+            supabaseUrl,
+            supabaseAnonKey
+          )
+          
+          console.log(`✅ QR code generated and stored for reservation group: ${approvedReservation.confirmation_number}`)
+        } catch (qrError) {
+          console.error("❌ Failed to generate/store QR code:", qrError)
+          // Don't throw here - approval should still succeed even if QR fails
+        }
       }
 
       // Refresh the reservations list
@@ -537,7 +425,7 @@ export default function AdminPage() {
       // Close the dialog
       setConfirmDialog({ open: false, ids: null, action: null })
     } catch (error: any) {
-      console.error("Error updating reservation:", error)
+      console.error("❌ ADMIN ERROR: Failed to update reservation:", error)
       setError(error.message || "Failed to update reservation")
     } finally {
       setActionLoading(false)
@@ -596,49 +484,7 @@ export default function AdminPage() {
     }
   }
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })
-  }
 
-  // Format time slots for display
-  const formatTimeSlots = (timeSlots: { start_time: string; end_time: string }[]) => {
-    if (!timeSlots.length) return "N/A"
-
-    // If there's only one time slot, just show start and end time
-    if (timeSlots.length === 1) {
-      return `${timeSlots[0].start_time.substring(0, 5)} - ${timeSlots[0].end_time.substring(0, 5)}`
-    }
-
-    // For consecutive time slots, find the earliest start time and latest end time
-    const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time))
-
-    // Check if slots are consecutive
-    let isConsecutive = true
-    for (let i = 0; i < sortedSlots.length - 1; i++) {
-      const currentEndHour = Number.parseInt(sortedSlots[i].end_time.split(":")[0])
-      const nextStartHour = Number.parseInt(sortedSlots[i + 1].start_time.split(":")[0])
-      if (currentEndHour !== nextStartHour) {
-        isConsecutive = false
-        break
-      }
-    }
-
-    if (isConsecutive) {
-      // If consecutive, show as a range
-      return `${sortedSlots[0].start_time.substring(0, 5)} - ${sortedSlots[sortedSlots.length - 1].end_time.substring(0, 5)}`
-    } else {
-      // If not consecutive, list all slots
-      return sortedSlots
-        .map((slot) => `${slot.start_time.substring(0, 5)} - ${slot.end_time.substring(0, 5)}`)
-        .join(", ")
-    }
-  }
 
   return (
     <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white">
@@ -709,7 +555,7 @@ export default function AdminPage() {
                 sortDirection={sortDirection}
                 toggleSortDirection={toggleSortDirection}
                 loading={loading}
-                formatDate={formatDate}
+                formatDate={formatDateShort}
                 formatTimeSlots={formatTimeSlots}
               />
             </TabsContent>
@@ -726,7 +572,7 @@ export default function AdminPage() {
                 sortDirection={sortDirection}
                 toggleSortDirection={toggleSortDirection}
                 loading={loading}
-                formatDate={formatDate}
+                formatDate={formatDateShort}
                 formatTimeSlots={formatTimeSlots}
               />
             </TabsContent>
@@ -743,7 +589,7 @@ export default function AdminPage() {
                 sortDirection={sortDirection}
                 toggleSortDirection={toggleSortDirection}
                 loading={loading}
-                formatDate={formatDate}
+                formatDate={formatDateShort}
                 formatTimeSlots={formatTimeSlots}
               />
             </TabsContent>
@@ -760,7 +606,7 @@ export default function AdminPage() {
                 sortDirection={sortDirection}
                 toggleSortDirection={toggleSortDirection}
                 loading={loading}
-                formatDate={formatDate}
+                formatDate={formatDateShort}
                 formatTimeSlots={formatTimeSlots}
               />
             </TabsContent>
@@ -1087,7 +933,6 @@ export default function AdminPage() {
       </Dialog>
     </div>
   )
-}
 
 interface ReservationTableProps {
   reservations: GroupedReservation[]
@@ -1175,7 +1020,7 @@ function ReservationTable({
             <tbody className="bg-white divide-y divide-gray-200">
               {reservations.length > 0 ? (
                 reservations.map((reservation) => (
-                  <tr key={`${reservation.confirmation_number}-${reservation.date}`} className="hover:bg-gray-50">
+                  <tr key={`${reservation.confirmation_number}-${reservation.date}-${reservation.room_id}`} className="hover:bg-gray-50">
                     <td className="p-3">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
@@ -1304,4 +1149,5 @@ function ReservationTable({
       </div>
     </div>
   )
+}
 }
