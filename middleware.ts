@@ -5,8 +5,7 @@ import type { NextRequest } from "next/server"
 // Update the middleware to handle admin login better
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
-
+  
   const isAdminRoute = req.nextUrl.pathname.startsWith("/admin")
   const isAuthRoute =
     req.nextUrl.pathname.startsWith("/login") ||
@@ -15,6 +14,15 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/auth") ||
     req.nextUrl.pathname.startsWith("/register-success") ||
     req.nextUrl.pathname.startsWith("/reset-password")
+  
+  // Static files and API routes - skip authentication
+  const isStaticFile = req.nextUrl.pathname.startsWith("/_next") ||
+                      req.nextUrl.pathname.startsWith("/api") ||
+                      req.nextUrl.pathname.includes(".")
+
+  if (isStaticFile) {
+    return res
+  }
 
   // Handle admin routes
   if (isAdminRoute) {
@@ -32,7 +40,8 @@ export async function middleware(req: NextRequest) {
     return res
   }
 
-  // For all other routes, check session
+  // For protected routes, check session
+  const supabase = createMiddlewareClient({ req, res })
   const {
     data: { session },
   } = await supabase.auth.getSession()
@@ -53,9 +62,11 @@ export const config = {
     /*
      * Match all request paths except for the ones starting with:
      * - _next/static (static files)
-     * - _next/image (image optimization files)
+     * - _next/image (image optimization files)  
      * - favicon.ico (favicon file)
+     * - api routes
+     * - static assets
      */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|.*\\..*).*)",
   ],
 }

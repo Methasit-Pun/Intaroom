@@ -42,40 +42,25 @@ export default function RegisterPage() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `https://intaroomv2.vercel.app/auth/callback`,
           data: {
             full_name: fullName,
             username: username,
+            // Include any additional fields you want to capture
           },
         },
       })
 
       if (error) throw error
 
-      // Even if the user needs to confirm their email, we consider this a successful registration
-      // and redirect to the success page
       if (data.user) {
-        // Create profile with role (always set to "user")
-        const { error: profileError } = await supabase.from("profiles").insert([
-          {
-            id: data.user.id,
-            full_name: fullName,
-            username: username,
-            role: "user", // Always set to "user"
-            email: email,
-          },
-        ])
-
-        if (profileError) {
-          console.error("Profile creation error:", profileError)
-          // Continue with success flow even if profile creation has an error
-          // The profile will be created by the database trigger
-        }
-
-        // Always redirect to success page
+        // Wait a bit for the database trigger to create the profile
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        console.log("Registration successful, redirecting to success page")
+        // Redirect to success page immediately
         router.push("/register-success")
       } else {
-        // This should rarely happen, but just in case
         throw new Error("Registration failed. Please try again.")
       }
     } catch (error: any) {

@@ -40,21 +40,18 @@ export default function LoginPage() {
     }
   }, [searchParams])
 
-  // Replace the existing useEffect with this single consolidated one
+  // Check auth state only once on mount
   useEffect(() => {
+    let isMounted = true;
+    
     const checkAuthState = async () => {
       try {
-        // Prevent multiple simultaneous checks
-        if (loading) return
-
         console.log("🔍 Checking authentication state...")
-        console.log("🌍 Environment:", process.env.NODE_ENV)
-        console.log("🔗 Current URL:", window.location.href)
 
         // Check admin login first (highest priority)
         if (localStorage.getItem("isAdmin") === "true") {
           console.log("👑 Admin already logged in, redirecting to admin panel")
-          router.push("/admin")
+          if (isMounted) router.push("/admin")
           return
         }
 
@@ -70,14 +67,14 @@ export default function LoginPage() {
 
             if (userProfile && userProfile.full_name && userProfile.telephone) {
               console.log("✅ LINE user profile complete, redirecting to main page")
-              router.push("/")
+              if (isMounted) router.push("/")
             } else {
               console.log("⚠️ LINE user profile incomplete, redirecting to profile setup")
-              router.push("/profile?setup=true")
+              if (isMounted) router.push("/profile?setup=true")
             }
           } catch (error) {
             console.error("❌ Error checking LINE user profile:", error)
-            router.push("/profile?setup=true")
+            if (isMounted) router.push("/profile?setup=true")
           }
           return
         }
@@ -87,7 +84,7 @@ export default function LoginPage() {
         if (data.session) {
           console.log("🔐 Supabase session found, redirecting to main page")
           console.log("👤 Session user:", data.session.user.email)
-          router.push("/")
+          if (isMounted) router.push("/")
           return
         }
 
@@ -97,9 +94,14 @@ export default function LoginPage() {
       }
     }
 
-    // Only run the check once when component mounts and dependencies change
-    checkAuthState()
-  }, [router, supabase, isLoggedIn, profile]) // Removed loading from dependencies to prevent loops
+    // Debounce the auth check to prevent multiple rapid calls
+    const timeoutId = setTimeout(checkAuthState, 100)
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId)
+    }
+  }, []) // Only run once on mount
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

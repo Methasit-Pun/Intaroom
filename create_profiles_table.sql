@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   full_name TEXT,
   email TEXT,
   role TEXT DEFAULT 'user',
-  email_verified BOOLEAN DEFAULT false,
+  email_verified BOOLEAN DEFAULT true,  -- Changed default to true to skip email verification
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, full_name, email, role, email_verified)
-  VALUES (new.id, '', new.email, 'user', false);
+  VALUES (new.id, '', new.email, 'user', true);  -- Set email_verified to true by default
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
