@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import Link from "next/link"
@@ -17,12 +17,51 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [usernameStatus, setUsernameStatus] = useState<{valid: boolean, message: string} | null>(null)
+  const [checkingUsername, setCheckingUsername] = useState(false)
 
   // Initialize Supabase client with explicit URL and key
   const supabase = createClientComponentClient({
     supabaseUrl,
     supabaseKey: supabaseAnonKey,
   })
+  
+  // Function to check username availability
+  const checkUsernameAvailability = async (username: string) => {
+    if (username.length < 3) {
+      setUsernameStatus({ valid: false, message: 'Username must be at least 3 characters' })
+      return
+    }
+    
+    setCheckingUsername(true)
+    try {
+      const { data, error } = await supabase
+        .rpc('validate_username', { username_to_validate: username })
+      
+      if (error) {
+        console.error('Error validating username:', error)
+        setUsernameStatus(null)
+      } else {
+        setUsernameStatus(data as { valid: boolean, message: string })
+      }
+    } catch (err) {
+      console.error('Failed to check username:', err)
+      setUsernameStatus(null)
+    } finally {
+      setCheckingUsername(false)
+    }
+  }
+  
+  // Use debounce to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (username && username.length >= 3) {
+        checkUsernameAvailability(username)
+      }
+    }, 500)
+    
+    return () => clearTimeout(timer)
+  }, [username])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +76,18 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
+      // Check if username is valid
+      if (username) {
+        const { data, error } = await supabase
+          .rpc('validate_username', { username_to_validate: username })
+        
+        if (error || (data && !data.valid)) {
+          setError(data ? data.message : "Username validation failed. Please try again.")
+          setLoading(false)
+          return
+        }
+      }
+      
       // Sign up with email and password
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -98,10 +149,30 @@ export default function RegisterPage() {
                 placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                className={`w-full px-4 py-3 rounded-full bg-transparent border ${
+                  usernameStatus 
+                    ? usernameStatus.valid 
+                      ? 'border-green-500' 
+                      : 'border-red-500' 
+                    : 'border-white/30'
+                } text-white placeholder:text-white/70 focus:outline-none focus:border-white/50`}
                 required
               />
-              <p className="text-xs text-white/70 mt-1 ml-2">Choose a unique username for login</p>
+              <div className="flex items-center mt-1 ml-2">
+                {checkingUsername && (
+                  <div className="animate-spin h-3 w-3 border-2 border-white/50 rounded-full border-t-transparent mr-1"></div>
+                )}
+                {usernameStatus && (
+                  <p className={`text-xs ${
+                    usernameStatus.valid ? 'text-green-500' : 'text-red-400'
+                  }`}>
+                    {usernameStatus.message}
+                  </p>
+                )}
+                {!checkingUsername && !usernameStatus && (
+                  <p className="text-xs text-white/70">Choose a unique username for login</p>
+                )}
+              </div>
             </div>
 
             <div>

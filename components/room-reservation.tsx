@@ -16,7 +16,7 @@ import { useLiff } from "@/components/liff-provider"
 const staticRooms = [
   {
     id: 1,
-    name: "Innospace Room (AIS 5G Garage Room)",
+    name: "Dreamscape Room (AIS 5G Garage Room)",
     capacity: "8-10",
     features: ["Projector", "TV"],
     image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
@@ -129,14 +129,14 @@ export default function RoomReservation() {
 
               if (!profileError && profileData) {
                 console.log("User profile loaded:", profileData)
-                setUserCredits(profileData.credits || 100)
+                setUserCredits(profileData.credits || 0) // Default to 0 instead of 100
               } else {
                 console.error("Profile fetch error:", profileError)
-                setUserCredits(100)
+                setUserCredits(0) // Default to 0 instead of 100
               }
             } catch (err) {
               console.error("Error fetching Supabase credits:", err)
-              setUserCredits(100)
+              setUserCredits(0) // Default to 0 instead of 100
             }
           }
           // If logged in via LIFF, try to fetch by LINE user ID
@@ -149,13 +149,13 @@ export default function RoomReservation() {
                 .single()
 
               if (!lineUserError && lineUserData) {
-                setUserCredits(lineUserData.credits || 100)
+                setUserCredits(lineUserData.credits || 0) // Default to 0 instead of 100
               } else {
-                setUserCredits(100)
+                setUserCredits(0) // Default to 0 instead of 100
               }
             } catch (err) {
               console.error("Error fetching LINE user credits:", err)
-              setUserCredits(100)
+              setUserCredits(0) // Default to 0 instead of 100
             }
           }
         }

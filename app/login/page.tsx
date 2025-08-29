@@ -184,7 +184,10 @@ export default function LoginPage() {
           if (error.message.includes("Invalid login credentials")) {
             throw new Error("Invalid username or password. Please check your credentials and try again.")
           } else if (error.message.includes("Email not confirmed")) {
-            throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+            // BYPASS EMAIL VERIFICATION CHECK FOR TESTING
+            console.warn("⚠️ Email not confirmed but proceeding anyway for testing")
+            // Original code: 
+            // throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
           } else {
             throw new Error(`Authentication failed: ${error.message}`)
           }
@@ -196,12 +199,13 @@ export default function LoginPage() {
 
         console.log("✅ Authentication successful for user:", data.user.id)
 
-        // Check if email is verified
-        if (!data.user.email_confirmed_at) {
-          console.warn("⚠️ User email not confirmed, signing out")
-          await supabase.auth.signOut()
-          throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
-        }
+        // BYPASS EMAIL VERIFICATION FOR TESTING
+        // Original code:
+        // if (!data.user.email_confirmed_at) {
+        //   console.warn("⚠️ User email not confirmed, signing out")
+        //   await supabase.auth.signOut()
+        //   throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+        // }
 
         // Store user info in localStorage for quick access
         if (userProfile) {
