@@ -63,9 +63,6 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 10. `update_default_credits.sql`
 
 
-
-
-
 ### Running the Development Server
 
 ```shellscript
@@ -74,7 +71,7 @@ npm run dev
 yarn dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) 
 
 ## Project Structure
 
