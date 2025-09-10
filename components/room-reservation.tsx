@@ -16,7 +16,7 @@ import { useLiff } from "@/components/liff-provider"
 const staticRooms = [
   {
     id: 1,
-    name: "Innospace Room (AIS 5G Garage Room)",
+    name: "Dreamscape Room (AIS 5G Garage Room)",
     capacity: "8-10",
     features: ["Projector", "TV"],
     image_url: "https://www.eng.chula.ac.th/wp-content/uploads/2022/08/05-2-1024x683.jpg",
@@ -190,12 +190,13 @@ export default function RoomReservation() {
       const dateStr = formatDateForDatabase(date)
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
-      // Direct query to reservations table only, avoiding profiles table
+      // Direct query to reservations table only, filtering for approved reservations only
       const { data, error } = await supabase
         .from("reservations")
         .select("booking_name, room_id, date, start_time, end_time, status")
         .eq("room_id", roomId)
         .eq("date", dateStr)
+        .eq("status", "Approved") // Only show approved reservations in the main timetable
 
       if (error) {
         console.error("Error fetching reservations:", error)
@@ -299,9 +300,12 @@ export default function RoomReservation() {
     })
   }
 
-  // Check if a time slot is available
+  // Check if a time slot is available (only check for approved reservations)
   const isTimeSlotAvailable = (time: string) => {
-    return !getReservation(time)
+    const reservation = getReservation(time)
+    // A slot is available if there's no approved reservation for it
+    // Pending reservations don't block availability
+    return !reservation || reservation.status !== "Approved"
   }
 
   // Generate availability data for the current room and date
@@ -375,32 +379,25 @@ export default function RoomReservation() {
                 <span className="hidden sm:inline">Profile</span>
               </Button>
 
-              <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
+                <Button variant="ghost" className="text-white hover:bg-white/10" onClick={handleMyReservations}>
                 <CalendarDays className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">My Reservations</span>
-              </Button>
+                </Button>
 
-              <LogoutButton variant="ghost" className="text-white hover:bg-white/10" />
-            </div>
-          </div>
-        ) : (
-          <Button
-            onClick={() => router.push("/login")}
-            className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
-          >
-            Login
-          </Button>
-        )}
-        {process.env.NODE_ENV === "development" && (
-          <Button
-            onClick={() => router.push("/test-auth")}
-            variant="outline"
-            className="ml-2 text-white border-white/30 hover:bg-white/10"
-            size="sm"
-          >
-            Test Auth
-          </Button>
-        )}
+                <LogoutButton
+                variant="ghost"
+                className="text-white hover:bg-white/10"
+                />
+              </div>
+              </div>
+            ) : (
+              <Button
+              onClick={() => router.push("/login")}
+              className="bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-medium"
+              >
+              Login
+              </Button>
+            )}
       </div>
 
       {/* Main content - Desktop optimized layout */}
@@ -587,9 +584,9 @@ export default function RoomReservation() {
           </div>
 
           {/* Create Reservation Button */}
-          <div className="mt-4">
+          <div className="mt-8 mb-6">
             <Button
-              className="w-full bg-[#AC7979] hover:bg-[#9A6B6B] text-white py-5 rounded-xl shadow-lg border border-[#8B1F2D]/30 transition-all hover:shadow-xl"
+              className="w-full bg-[#AC7979] hover:bg-[#9A6B6B] text-white py-6 rounded-xl shadow-lg border border-[#8B1F2D]/30 transition-all hover:shadow-xl"
               onClick={handleCreateReservation}
               disabled={loading}
             >

@@ -16,10 +16,12 @@ interface Reservation {
   id: number
   booking_name: string
   room_id: number
+  user_id: string
   date: string
   start_time: string
   end_time: string
   status: "Pending" | "Approved" | "Rejected"
+  purpose: string
   confirmation_number: string
   room_name?: string
 }
@@ -28,9 +30,11 @@ interface GroupedReservation {
   ids: number[]
   booking_name: string
   room_id: number
+  user_id: string
   date: string
   time_slots: { start_time: string; end_time: string }[]
   status: "Pending" | "Approved" | "Rejected"
+  purpose: string
   confirmation_number: string
   room_name?: string
 }
@@ -54,7 +58,7 @@ export default function MyReservationsPage() {
     fetchReservations()
   }, [])
 
-  // Group reservations by confirmation number base AND date
+  // Group reservations by confirmation number base AND date AND room
   useEffect(() => {
     if (reservations.length > 0) {
       const grouped: { [key: string]: GroupedReservation } = {}
@@ -63,17 +67,20 @@ export default function MyReservationsPage() {
         // Extract the base confirmation number (before the dash or the whole if no dash)
         const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-        // Create a unique key combining the confirmation base and date
-        const groupKey = `${baseConfirmation}-${reservation.date}`
+        // Create a unique key combining the confirmation base, date, room_id, and user_id
+        // This ensures reservations are only grouped for the same user
+        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}-${reservation.user_id}`
 
         if (!grouped[groupKey]) {
           grouped[groupKey] = {
             ids: [reservation.id],
             booking_name: reservation.booking_name,
             room_id: reservation.room_id,
+            user_id: reservation.user_id,
             date: reservation.date,
             time_slots: [{ start_time: reservation.start_time, end_time: reservation.end_time }],
             status: reservation.status,
+            purpose: reservation.purpose,
             confirmation_number: baseConfirmation,
             room_name: reservation.room_name,
           }
@@ -127,11 +134,13 @@ export default function MyReservationsPage() {
         .select(`
           id, 
           booking_name, 
-          room_id, 
+          room_id,
+          user_id,
           date, 
           start_time, 
           end_time, 
-          status, 
+          status,
+          purpose,
           confirmation_number,
           rooms (
             id,
@@ -148,10 +157,12 @@ export default function MyReservationsPage() {
         id: reservation.id,
         booking_name: reservation.booking_name,
         room_id: reservation.room_id,
+        user_id: reservation.user_id,
         date: reservation.date,
         start_time: reservation.start_time,
         end_time: reservation.end_time,
         status: reservation.status,
+        purpose: reservation.purpose,
         confirmation_number: reservation.confirmation_number,
         room_name: reservation.rooms?.name || `Room ${reservation.room_id}`,
       }))
@@ -231,10 +242,11 @@ export default function MyReservationsPage() {
   })
 
   const handleViewDetails = (reservation: GroupedReservation) => {
-    // Navigate to reservation details page
+    // Navigate to reservation details page with room ID
     const params = new URLSearchParams()
     params.set("confirmation", reservation.confirmation_number)
     params.set("date", reservation.date)
+    params.set("roomId", reservation.room_id.toString())
 
     router.push(`/reservation-details?${params.toString()}`)
   }
@@ -246,7 +258,7 @@ export default function MyReservationsPage() {
         <div className="flex items-center">
           <Button variant="ghost" className="text-white hover:bg-white/10 mr-2 -ml-2" onClick={() => router.push("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Home
+            <span className="hidden sm:inline">Home</span>
           </Button>
         </div>
         <h1 className="text-xl font-semibold text-center flex-1">
@@ -319,7 +331,7 @@ export default function MyReservationsPage() {
               <div className="space-y-4">
                 {filteredReservations.map((reservation) => (
                   <div
-                    key={`${reservation.confirmation_number}-${reservation.date}`}
+                    key={`${reservation.confirmation_number}-${reservation.date}-${reservation.room_id}`}
                     className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useRouter } from "next/navigation"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 
 // Define the LIFF type
@@ -46,12 +47,14 @@ type LiffProviderProps = {
 }
 
 export function LiffProvider({ children, liffId }: LiffProviderProps) {
+  const router = useRouter()
   const [liff, setLiff] = useState<any>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [profile, setProfile] = useState<LiffContextType["profile"]>(null)
   const [isInClient, setIsInClient] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const isProcessing = useRef(false)
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -105,6 +108,14 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
 
   // Handle Supabase authentication
   const handleSupabaseAuth = async (lineProfile: any) => {
+    // Prevent multiple simultaneous processing
+    if (isProcessing.current) {
+      console.log("Authentication already in progress, skipping...")
+      return
+    }
+    
+    isProcessing.current = true
+    
     try {
       console.log("Handling Supabase authentication for LINE user:", lineProfile.userId)
 
@@ -137,10 +148,10 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
         // Check if user has completed their profile
         if (!existingUser.full_name || !existingUser.telephone) {
           console.log("User profile incomplete, redirecting to profile page")
-          window.location.href = "/profile?setup=true"
+          router.push("/profile?setup=true")
         } else {
           console.log("User profile complete, redirecting to main page")
-          window.location.href = "/"
+          router.push("/")
         }
       } else {
         console.log("New user, creating account")
@@ -189,13 +200,15 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
 
           // Redirect to profile setup
           console.log("Redirecting new user to profile setup")
-          window.location.href = "/profile?setup=true&new=true"
+          router.push("/profile?setup=true&new=true")
         }
       }
     } catch (err) {
       console.error("Error in Supabase authentication:", err)
       // Redirect to profile page anyway so user can try to complete setup
-      window.location.href = "/profile?setup=true&error=true"
+      router.push("/profile?setup=true&error=true")
+    } finally {
+      isProcessing.current = false
     }
   }
 
@@ -225,9 +238,10 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
       // Reset state
       setIsLoggedIn(false)
       setProfile(null)
+      isProcessing.current = false
 
       // Redirect to login page
-      window.location.href = "/login"
+      router.push("/login")
     } catch (error) {
       console.error("Error during logout:", error)
       // Force reload as fallback

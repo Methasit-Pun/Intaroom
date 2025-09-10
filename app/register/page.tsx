@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import Link from "next/link"
@@ -17,20 +17,51 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [usernameStatus, setUsernameStatus] = useState<{valid: boolean, message: string} | null>(null)
+  const [checkingUsername, setCheckingUsername] = useState(false)
 
   // Initialize Supabase client with explicit URL and key
   const supabase = createClientComponentClient({
     supabaseUrl,
     supabaseKey: supabaseAnonKey,
   })
-
-  const validateEmail = (email: string) => {
-    // Check if email contains chula.ac.th
-    if (!email.toLowerCase().includes("chula.ac.th")) {
-      return "Please use your Chulalongkorn University email (@chula.ac.th)"
+  
+  // Function to check username availability
+  const checkUsernameAvailability = async (username: string) => {
+    if (username.length < 3) {
+      setUsernameStatus({ valid: false, message: 'Username must be at least 3 characters' })
+      return
     }
-    return null
+    
+    setCheckingUsername(true)
+    try {
+      const { data, error } = await supabase
+        .rpc('validate_username', { username_to_validate: username })
+      
+      if (error) {
+        console.error('Error validating username:', error)
+        setUsernameStatus(null)
+      } else {
+        setUsernameStatus(data as { valid: boolean, message: string })
+      }
+    } catch (err) {
+      console.error('Failed to check username:', err)
+      setUsernameStatus(null)
+    } finally {
+      setCheckingUsername(false)
+    }
   }
+  
+  // Use debounce to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (username && username.length >= 3) {
+        checkUsernameAvailability(username)
+      }
+    }, 500)
+    
+    return () => clearTimeout(timer)
+  }, [username])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,55 +73,45 @@ export default function RegisterPage() {
       return
     }
 
-    // Validate email is a Chula email
-    const emailError = validateEmail(email)
-    if (emailError) {
-      setError(emailError)
-      return
-    }
-
     setLoading(true)
 
     try {
+      // Check if username is valid
+      if (username) {
+        const { data, error } = await supabase
+          .rpc('validate_username', { username_to_validate: username })
+        
+        if (error || (data && !data.valid)) {
+          setError(data ? data.message : "Username validation failed. Please try again.")
+          setLoading(false)
+          return
+        }
+      }
+      
       // Sign up with email and password
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `https://intaroomv2.vercel.app/auth/callback`,
           data: {
             full_name: fullName,
             username: username,
+            // Include any additional fields you want to capture
           },
         },
       })
 
       if (error) throw error
 
-      // Even if the user needs to confirm their email, we consider this a successful registration
-      // and redirect to the success page
       if (data.user) {
-        // Create profile with role (always set to "user")
-        const { error: profileError } = await supabase.from("profiles").insert([
-          {
-            id: data.user.id,
-            full_name: fullName,
-            username: username,
-            role: "user", // Always set to "user"
-            email: email,
-          },
-        ])
-
-        if (profileError) {
-          console.error("Profile creation error:", profileError)
-          // Continue with success flow even if profile creation has an error
-          // The profile will be created by the database trigger
-        }
-
-        // Always redirect to success page
+        // Wait a bit for the database trigger to create the profile
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        console.log("Registration successful, redirecting to success page")
+        // Redirect to success page immediately
         router.push("/register-success")
       } else {
-        // This should rarely happen, but just in case
         throw new Error("Registration failed. Please try again.")
       }
     } catch (error: any) {
@@ -101,8 +122,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
-      <div className="w-full max-w-md p-6 rounded-3xl bg-[#6D3B3B]">
+    <div className="flex min-h-screen items-center justify-center bg-[#5A0D16] px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md mx-auto p-6 rounded-3xl bg-[#6D3B3B]">
         <h1 className="text-2xl font-semibold text-white text-center mb-6">Register</h1>
 
         {error && (
@@ -128,22 +149,41 @@ export default function RegisterPage() {
                 placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                className={`w-full px-4 py-3 rounded-full bg-transparent border ${
+                  usernameStatus 
+                    ? usernameStatus.valid 
+                      ? 'border-green-500' 
+                      : 'border-red-500' 
+                    : 'border-white/30'
+                } text-white placeholder:text-white/70 focus:outline-none focus:border-white/50`}
                 required
               />
-              <p className="text-xs text-white/70 mt-1 ml-2">Choose a unique username for login</p>
+              <div className="flex items-center mt-1 ml-2">
+                {checkingUsername && (
+                  <div className="animate-spin h-3 w-3 border-2 border-white/50 rounded-full border-t-transparent mr-1"></div>
+                )}
+                {usernameStatus && (
+                  <p className={`text-xs ${
+                    usernameStatus.valid ? 'text-green-500' : 'text-red-400'
+                  }`}>
+                    {usernameStatus.message}
+                  </p>
+                )}
+                {!checkingUsername && !usernameStatus && (
+                  <p className="text-xs text-white/70">Choose a unique username for login</p>
+                )}
+              </div>
             </div>
 
             <div>
               <input
                 type="email"
-                placeholder="Chula Email (@chula.ac.th)"
+                placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
               />
-              <p className="text-xs text-white/70 mt-1 ml-2">Only Chulalongkorn University emails are allowed</p>
             </div>
 
             <div>
@@ -188,3 +228,4 @@ export default function RegisterPage() {
     </div>
   )
 }
+

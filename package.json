@@ -6,8 +6,10 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "generate-qr": "node scripts/generate-qr-codes.js"
   },
+  
   "dependencies": {
     "@line/liff": "latest",
     "@radix-ui/react-avatar": "latest",

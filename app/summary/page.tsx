@@ -636,7 +636,7 @@ export default function SummaryPage() {
 
                   <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                     <p className="text-sm text-yellow-700">
-                      <span className="font-medium">Note:</span> QR code for check-in will be sent to your email once
+                      <span className="font-medium">Note:</span> QR code for check-in will be shown in my-reservation, once
                       the reservation is approved.
                     </p>
                   </div>

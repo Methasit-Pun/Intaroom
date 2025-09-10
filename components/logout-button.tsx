@@ -54,13 +54,13 @@ export default function LogoutButton({ variant = "outline", className = "" }: Lo
     <Button variant={variant} className={className} onClick={handleLogout} disabled={loading}>
       {loading ? (
         <>
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          Logging out...
+          <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
+          <span className="hidden sm:inline">Logging out...</span>
         </>
       ) : (
         <>
-          <LogOut className="h-4 w-4 mr-2" />
-          Logout
+          <LogOut className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Logout</span>
         </>
       )}
     </Button>

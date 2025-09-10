@@ -19,47 +19,21 @@ import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
-
-interface ReservationDetail {
-  id: number
-  booking_name: string
-  room_id: number
-  date: string
-  start_time: string
-  end_time: string
-  status: "Pending" | "Approved" | "Rejected"
-  confirmation_number: string
-  purpose: string
-  attendees: number
-  contact_email: string
-  contact_phone?: string
-  room_name?: string
-  room_capacity?: number
-  room_description?: string
-  created_at: string
-}
-
-interface GroupedReservation {
-  booking_name: string
-  room_id: number
-  date: string
-  time_slots: { start_time: string; end_time: string }[]
-  status: "Pending" | "Approved" | "Rejected"
-  confirmation_number: string
-  purpose: string
-  attendees: number
-  contact_email: string
-  contact_phone?: string
-  room_name?: string
-  room_capacity?: number
-  room_description?: string
-  created_at: string
-}
+import {
+  type GroupedReservation,
+  generateQRCodeText,
+  generateQRCodeForRecord,
+  storeQRCodeForApprovedReservation,
+  formatDate,
+  formatTime,
+  formatTimeSlots,
+} from "@/lib/reservation-utils"
 
 export default function ReservationDetailsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [reservation, setReservation] = useState<GroupedReservation | null>(null)
+  const [individualReservations, setIndividualReservations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,14 +65,15 @@ export default function ReservationDetailsPage() {
       // Get reservation details from URL params
       const confirmationNumber = searchParams.get("confirmation")
       const date = searchParams.get("date")
+      const roomId = searchParams.get("roomId") // Add room ID parameter
 
       if (!confirmationNumber || !date) {
         setError("Missing reservation information")
         return
       }
 
-      // Fetch reservation details with room data in a single query
-      const { data: reservationsData, error: reservationsError } = await supabase
+      // Build query with optional room filter
+      let query = supabase
         .from("reservations")
         .select(`
           *,
@@ -114,6 +89,13 @@ export default function ReservationDetailsPage() {
         .eq("date", date)
         .order("start_time", { ascending: true })
 
+      // If roomId is provided, filter by it
+      if (roomId) {
+        query = query.eq("room_id", parseInt(roomId))
+      }
+
+      const { data: reservationsData, error: reservationsError } = await query
+
       if (reservationsError) throw reservationsError
 
       if (!reservationsData || reservationsData.length === 0) {
@@ -121,13 +103,29 @@ export default function ReservationDetailsPage() {
         return
       }
 
+      // If no roomId specified but multiple rooms found, redirect to first room
+      if (!roomId) {
+        const uniqueRooms = [...new Set(reservationsData.map(r => r.room_id))]
+        if (uniqueRooms.length > 1) {
+          // Redirect to the first room's details
+          const params = new URLSearchParams()
+          params.set("confirmation", confirmationNumber)
+          params.set("date", date)
+          params.set("roomId", uniqueRooms[0].toString())
+          router.replace(`/reservation-details?${params.toString()}`)
+          return
+        }
+      }
+
       // Get room info from the first reservation
       const roomInfo = reservationsData[0].rooms
 
-      // Group the reservations by confirmation number and date
+      // Group the reservations by confirmation number, date, and room
       const groupedReservation: GroupedReservation = {
+        ids: reservationsData.map(r => r.id),
         booking_name: reservationsData[0].booking_name,
         room_id: reservationsData[0].room_id,
+        user_id: reservationsData[0].user_id,
         date: reservationsData[0].date,
         time_slots: reservationsData.map((r: any) => ({
           start_time: r.start_time,
@@ -146,6 +144,7 @@ export default function ReservationDetailsPage() {
       }
 
       setReservation(groupedReservation)
+      setIndividualReservations(reservationsData) // Store individual reservations for QR code generation
     } catch (error: any) {
       console.error("Error fetching reservation details:", error)
       setError(error.message || "Failed to load reservation details")
@@ -153,61 +152,32 @@ export default function ReservationDetailsPage() {
       setLoading(false)
     }
   }
+  // Generate and store QR code text for the first time slot
+  const generateAndStoreQRCode = (reservation: GroupedReservation) => {
+    // Find the first individual reservation (earliest time slot)
+    const firstReservation = individualReservations.find(r => 
+      r.start_time === reservation.time_slots[0].start_time
+    )
+    
+    if (!firstReservation) {
+      // Fallback to the grouped reservation method
+      return generateQRCodeText(reservation)
+    }
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
+    // Generate QR code using the individual reservation's confirmation number
+    const qrCodeText = generateQRCodeForRecord({
+      room_id: reservation.room_id,
+      date: reservation.date,
+      start_time: firstReservation.start_time,
+      confirmation_number: firstReservation.confirmation_number
     })
-  }
 
-  // Format time for display
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(":")
-    const hour = Number.parseInt(hours)
-    const period = hour >= 12 ? "PM" : "AM"
-    const formattedHour = hour % 12 === 0 ? 12 : hour % 12
-    return `${formattedHour}:${minutes} ${period}`
-  }
-
-  // Format time slots for display
-  const formatTimeSlots = (timeSlots: { start_time: string; end_time: string }[]) => {
-    if (!timeSlots.length) return "N/A"
-
-    const sortedSlots = [...timeSlots].sort((a, b) => a.start_time.localeCompare(b.start_time))
-
-    // Check if slots are consecutive
-    let isConsecutive = true
-    for (let i = 0; i < sortedSlots.length - 1; i++) {
-      const currentEndHour = Number.parseInt(sortedSlots[i].end_time.split(":")[0])
-      const nextStartHour = Number.parseInt(sortedSlots[i + 1].start_time.split(":")[0])
-      if (currentEndHour !== nextStartHour) {
-        isConsecutive = false
-        break
-      }
+    // Store in database if reservation is approved
+    if (reservation.status === "Approved") {
+      storeQRCodeForApprovedReservation(reservation, supabaseUrl, supabaseAnonKey)
     }
-
-    if (isConsecutive && sortedSlots.length > 1) {
-      return `${formatTime(sortedSlots[0].start_time)} - ${formatTime(sortedSlots[sortedSlots.length - 1].end_time)}`
-    } else {
-      return sortedSlots.map((slot) => `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`).join(", ")
-    }
-  }
-
-  // Generate QR code text with longer, more secure format
-  const generateQRCodeText = (reservation: GroupedReservation) => {
-    const roomPrefix = "INR"
-    const cleanConfirmation = reservation.confirmation_number.replace(/[^0-9]/g, "")
-    const roomId = reservation.room_id.toString().padStart(2, "0")
-    const dateCode = reservation.date.replace(/-/g, "").slice(2) // YYMMDD format
-    const timeCode = reservation.time_slots[0]?.start_time.replace(":", "") || "0000"
-
-    // Generate longer code: INR + room_id + date + time + confirmation
-    return `${roomPrefix}${roomId}${dateCode}${timeCode}${cleanConfirmation}`
+    
+    return qrCodeText
   }
 
   const getStatusIcon = (status: string) => {
@@ -348,7 +318,7 @@ export default function ReservationDetailsPage() {
                 <div className="bg-white rounded-2xl p-8 shadow-2xl">
                   <div className="mb-6">
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateQRCodeText(reservation))}&margin=15&color=5A0D16&bgcolor=FFFFFF`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateAndStoreQRCode(reservation))}&margin=15&color=5A0D16&bgcolor=FFFFFF`}
                       alt="Room Access QR Code"
                       className="w-48 h-48 mx-auto rounded-lg shadow-lg"
                     />
@@ -357,7 +327,7 @@ export default function ReservationDetailsPage() {
                   <div className="bg-gradient-to-r from-[#5A0D16] to-[#4A0B12] rounded-xl p-4 text-white">
                     <p className="text-xs font-medium text-[#D4AF37] mb-2">ACCESS CODE</p>
                     <p className="text-lg font-mono font-bold tracking-wider break-all">
-                      {generateQRCodeText(reservation)}
+                      {generateAndStoreQRCode(reservation)}
                     </p>
                   </div>
                 </div>
@@ -460,7 +430,7 @@ export default function ReservationDetailsPage() {
                 onClick={() => router.push("/my-reservations")}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                <span ></span>Back
               </Button>
               {reservation.status === "Pending" && (
                 <Button
