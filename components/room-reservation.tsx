@@ -129,14 +129,14 @@ export default function RoomReservation() {
 
               if (!profileError && profileData) {
                 console.log("User profile loaded:", profileData)
-                setUserCredits(profileData.credits || 0) // Default to 0 instead of 100
+                setUserCredits(profileData.credits || 100)
               } else {
                 console.error("Profile fetch error:", profileError)
-                setUserCredits(0) // Default to 0 instead of 100
+                setUserCredits(100)
               }
             } catch (err) {
               console.error("Error fetching Supabase credits:", err)
-              setUserCredits(0) // Default to 0 instead of 100
+              setUserCredits(100)
             }
           }
           // If logged in via LIFF, try to fetch by LINE user ID
@@ -149,13 +149,13 @@ export default function RoomReservation() {
                 .single()
 
               if (!lineUserError && lineUserData) {
-                setUserCredits(lineUserData.credits || 0) // Default to 0 instead of 100
+                setUserCredits(lineUserData.credits || 100)
               } else {
-                setUserCredits(0) // Default to 0 instead of 100
+                setUserCredits(100)
               }
             } catch (err) {
               console.error("Error fetching LINE user credits:", err)
-              setUserCredits(0) // Default to 0 instead of 100
+              setUserCredits(100)
             }
           }
         }
@@ -190,12 +190,13 @@ export default function RoomReservation() {
       const dateStr = formatDateForDatabase(date)
       console.log(`Fetching reservations for room ${roomId} on ${dateStr}`)
 
-      // Direct query to reservations table only, avoiding profiles table
+      // Direct query to reservations table only, filtering for approved reservations only
       const { data, error } = await supabase
         .from("reservations")
         .select("booking_name, room_id, date, start_time, end_time, status")
         .eq("room_id", roomId)
         .eq("date", dateStr)
+        .eq("status", "Approved") // Only show approved reservations in the main timetable
 
       if (error) {
         console.error("Error fetching reservations:", error)
@@ -299,9 +300,12 @@ export default function RoomReservation() {
     })
   }
 
-  // Check if a time slot is available
+  // Check if a time slot is available (only check for approved reservations)
   const isTimeSlotAvailable = (time: string) => {
-    return !getReservation(time)
+    const reservation = getReservation(time)
+    // A slot is available if there's no approved reservation for it
+    // Pending reservations don't block availability
+    return !reservation || reservation.status !== "Approved"
   }
 
   // Generate availability data for the current room and date

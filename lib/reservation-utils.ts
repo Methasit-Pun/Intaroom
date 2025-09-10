@@ -42,9 +42,8 @@ export interface GroupedReservation {
 }
 
 /**
- * Groups reservations by confirmation number base, date, room ID, and user ID
+ * Groups reservations by confirmation number base, date, and room ID
  * This ensures that reservations for the same room on the same day are grouped together
- * BUT only for the same user - different users' reservations are kept separate
  * @param reservations - Array of individual reservations
  * @param sortDirection - Sort direction for final grouped results
  * @returns Array of grouped reservations
@@ -61,9 +60,8 @@ export function groupReservations(
     // Extract the base confirmation number (before the dash or the whole if no dash)
     const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-    // Create a unique key combining the confirmation base, date, room_id, AND user_id
-    // This ensures reservations are only grouped for the same user
-    const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}-${reservation.user_id}`
+    // Create a unique key combining the confirmation base, date, and room_id
+    const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
 
     if (!grouped[groupKey]) {
       // Create new group
@@ -444,4 +442,103 @@ export function formatDateShort(dateString: string): string {
     month: "short",
     day: "numeric",
   })
+}
+
+/**
+ * Checks if two time ranges overlap
+ * @param start1 - Start time of first range (HH:MM format)
+ * @param end1 - End time of first range (HH:MM format)
+ * @param start2 - Start time of second range (HH:MM format)
+ * @param end2 - End time of second range (HH:MM format)
+ * @returns true if the time ranges overlap
+ */
+function timeRangesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
+  // Convert times to minutes for easier comparison
+  const timeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number)
+    return hours * 60 + minutes
+  }
+  
+  const start1Min = timeToMinutes(start1)
+  const end1Min = timeToMinutes(end1)
+  const start2Min = timeToMinutes(start2)
+  const end2Min = timeToMinutes(end2)
+  
+  // Check if ranges overlap: start1 < end2 && start2 < end1
+  return start1Min < end2Min && start2Min < end1Min
+}
+
+/**
+ * Finds and rejects reservations that overlap with the approved reservation
+ * @param approvedReservation - The reservation that was just approved
+ * @param supabaseUrl - Supabase URL
+ * @param supabaseAnonKey - Supabase anonymous key
+ * @returns Promise that resolves when overlapping reservations are rejected
+ */
+export async function rejectOverlappingReservations(
+  approvedReservation: GroupedReservation,
+  supabaseUrl: string,
+  supabaseAnonKey: string
+): Promise<{ rejectedCount: number; rejectedIds: number[] }> {
+  const { createClient } = await import("@supabase/supabase-js")
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+  try {
+    // Find all pending reservations for the same room and date (excluding the approved one)
+    const { data: overlappingReservations, error: fetchError } = await supabase
+      .from("reservations")
+      .select("id, start_time, end_time, user_id")
+      .eq("room_id", approvedReservation.room_id)
+      .eq("date", approvedReservation.date)
+      .eq("status", "Pending")
+      .not("id", "in", `(${approvedReservation.ids.join(",")})`) // Exclude the approved reservation itself
+
+    if (fetchError) {
+      console.error("Error fetching overlapping reservations:", fetchError)
+      throw fetchError
+    }
+
+    if (!overlappingReservations || overlappingReservations.length === 0) {
+      return { rejectedCount: 0, rejectedIds: [] }
+    }
+
+    // Check which reservations overlap with any of the approved time slots
+    const overlappingIds: number[] = []
+    
+    for (const pendingReservation of overlappingReservations) {
+      for (const approvedSlot of approvedReservation.time_slots) {
+        if (timeRangesOverlap(
+          pendingReservation.start_time,
+          pendingReservation.end_time,
+          approvedSlot.start_time,
+          approvedSlot.end_time
+        )) {
+          overlappingIds.push(pendingReservation.id)
+          break // No need to check other slots for this reservation
+        }
+      }
+    }
+
+    if (overlappingIds.length === 0) {
+      return { rejectedCount: 0, rejectedIds: [] }
+    }
+
+    // Reject the overlapping reservations
+    const { error: updateError } = await supabase
+      .from("reservations")
+      .update({ status: "Rejected" })
+      .in("id", overlappingIds)
+
+    if (updateError) {
+      console.error("Error rejecting overlapping reservations:", updateError)
+      throw updateError
+    }
+
+    console.log(`✅ Auto-rejected ${overlappingIds.length} overlapping reservations:`, overlappingIds)
+    
+    return { rejectedCount: overlappingIds.length, rejectedIds: overlappingIds }
+  } catch (error) {
+    console.error("Failed to reject overlapping reservations:", error)
+    throw error
+  }
 }
