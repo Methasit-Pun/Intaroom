@@ -42,8 +42,9 @@ export interface GroupedReservation {
 }
 
 /**
- * Groups reservations by confirmation number base, date, and room ID
+ * Groups reservations by confirmation number base, date, room ID, and user ID
  * This ensures that reservations for the same room on the same day are grouped together
+ * BUT only for the same user - different users' reservations are kept separate
  * @param reservations - Array of individual reservations
  * @param sortDirection - Sort direction for final grouped results
  * @returns Array of grouped reservations
@@ -60,8 +61,9 @@ export function groupReservations(
     // Extract the base confirmation number (before the dash or the whole if no dash)
     const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-    // Create a unique key combining the confirmation base, date, and room_id
-    const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
+    // Create a unique key combining the confirmation base, date, room_id, AND user_id
+    // This ensures reservations are only grouped for the same user
+    const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}-${reservation.user_id}`
 
     if (!grouped[groupKey]) {
       // Create new group

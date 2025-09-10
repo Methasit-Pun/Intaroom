@@ -16,10 +16,12 @@ interface Reservation {
   id: number
   booking_name: string
   room_id: number
+  user_id: string
   date: string
   start_time: string
   end_time: string
   status: "Pending" | "Approved" | "Rejected"
+  purpose: string
   confirmation_number: string
   room_name?: string
 }
@@ -28,9 +30,11 @@ interface GroupedReservation {
   ids: number[]
   booking_name: string
   room_id: number
+  user_id: string
   date: string
   time_slots: { start_time: string; end_time: string }[]
   status: "Pending" | "Approved" | "Rejected"
+  purpose: string
   confirmation_number: string
   room_name?: string
 }
@@ -63,17 +67,20 @@ export default function MyReservationsPage() {
         // Extract the base confirmation number (before the dash or the whole if no dash)
         const baseConfirmation = reservation.confirmation_number.split("-")[0]
 
-        // Create a unique key combining the confirmation base, date, and room_id
-        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}`
+        // Create a unique key combining the confirmation base, date, room_id, and user_id
+        // This ensures reservations are only grouped for the same user
+        const groupKey = `${baseConfirmation}-${reservation.date}-${reservation.room_id}-${reservation.user_id}`
 
         if (!grouped[groupKey]) {
           grouped[groupKey] = {
             ids: [reservation.id],
             booking_name: reservation.booking_name,
             room_id: reservation.room_id,
+            user_id: reservation.user_id,
             date: reservation.date,
             time_slots: [{ start_time: reservation.start_time, end_time: reservation.end_time }],
             status: reservation.status,
+            purpose: reservation.purpose,
             confirmation_number: baseConfirmation,
             room_name: reservation.room_name,
           }
@@ -127,11 +134,13 @@ export default function MyReservationsPage() {
         .select(`
           id, 
           booking_name, 
-          room_id, 
+          room_id,
+          user_id,
           date, 
           start_time, 
           end_time, 
-          status, 
+          status,
+          purpose,
           confirmation_number,
           rooms (
             id,
@@ -148,10 +157,12 @@ export default function MyReservationsPage() {
         id: reservation.id,
         booking_name: reservation.booking_name,
         room_id: reservation.room_id,
+        user_id: reservation.user_id,
         date: reservation.date,
         start_time: reservation.start_time,
         end_time: reservation.end_time,
         status: reservation.status,
+        purpose: reservation.purpose,
         confirmation_number: reservation.confirmation_number,
         room_name: reservation.rooms?.name || `Room ${reservation.room_id}`,
       }))
