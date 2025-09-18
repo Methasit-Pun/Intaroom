@@ -9,13 +9,13 @@
 
 ## 🚀 Features
 
-- **🔐 Multi-Auth System** - Email/password + LINE integration
-- **👤 User Management** - Profile system with credit-based reservations
-- **🏢 Smart Room Booking** - Real-time availability with conflict detection
-- **⚡ Admin Dashboard** - Comprehensive management with analytics
-- **📱 Mobile Optimized** - Responsive design for all devices
-- **🎫 QR Generation** - Automated QR codes for approved reservations
-- **📊 Analytics** - Room usage statistics and reporting
+- **Multi-Auth System** - Email/password + LINE integration
+- **User Management** - Profile system with credit-based reservations
+- **Smart Room Booking** - Real-time availability with conflict detection
+- **Admin Dashboard** - Comprehensive management with analytics
+- **Mobile Optimized** - Responsive design for all devices
+- **QR Generation** - Automated QR codes for approved reservations
+- **Analytics** - Room usage statistics and reporting
 
 ## 🛠️ Tech Stack
 
@@ -92,20 +92,6 @@ Visit [http://localhost:3000](http://localhost:3000)
 │   ├── utils.ts          # Helper functions
 │   └── reservation-utils.ts
 └── hooks/                # Custom React hooks
-```
-
-## 🔑 Default Credentials
-
-### Admin Access
-```
-Username: admin1
-Password: admin123
-```
-
-### Test User
-```
-Email: mb@test.com
-Password: abc123
 ```
 
 ## 🚀 Deployment
