@@ -230,19 +230,19 @@ export default function ReservePage() {
     setIsBookingModalOpen(true)
   }
 
-  // Handle slot selection with max 3 slots limit
+  // Handle slot selection with max 10 slots limit
   const handleSlotSelection = (index: number) => {
     setSelectedSlots((prev) => {
       // If already selected, remove it
       if (prev.includes(index)) {
         const newSelected = prev.filter((i) => i !== index)
-        setMaxSlotsReached(newSelected.length >= 3)
+        setMaxSlotsReached(newSelected.length >= 10)
         return newSelected
       }
       // If not selected and not at max, add it
-      else if (prev.length < 3) {
+      else if (prev.length < 10) {
         const newSelected = [...prev, index]
-        setMaxSlotsReached(newSelected.length >= 3)
+        setMaxSlotsReached(newSelected.length >= 10)
         return newSelected
       }
       // If at max already, don't change
@@ -341,7 +341,7 @@ export default function ReservePage() {
             <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 flex items-start gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-yellow-700">
-                You can select a maximum of 3 time slots per day. Please deselect a slot to select a different one.
+                You can select a maximum of 10 time slots per day. Please deselect a slot to select a different one.
               </p>
             </div>
           )}
