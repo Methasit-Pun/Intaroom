@@ -18,17 +18,18 @@ export async function GET(request: NextRequest) {
       // Check if this is an email verification
       const type = requestUrl.searchParams.get("type")
       
-  // --- TEST FLOW: Skip email verification and always auto-authenticate ---
-  if (type === "email_confirmation") {
-    // Email verification - redirect to login with success message
-    return NextResponse.redirect(`https://intaroomv2.vercel.app/login?verified=true`)
-  }
-  if (type === "recovery") {
-    // Password recovery - redirect to reset password page
-    return NextResponse.redirect(`https://intaroomv2.vercel.app/reset-password`)
-  }
-  // Regular auth callback - redirect to main app (skip verification for testing)
-  return NextResponse.redirect(`https://intaroomv2.vercel.app/`)
+      if (type === "email_confirmation") {
+        // Email verification - redirect to login with success message
+        return NextResponse.redirect(`https://intaroomv2.vercel.app/login?verified=true`)
+      }
+      
+      if (type === "recovery") {
+        // Password recovery - redirect to reset password page
+        return NextResponse.redirect(`https://intaroomv2.vercel.app/reset-password`)
+      }
+      
+      // Regular auth callback - redirect to main app
+      return NextResponse.redirect(`https://intaroomv2.vercel.app/`)
       
     } catch (error) {
       console.error("Auth callback error:", error)

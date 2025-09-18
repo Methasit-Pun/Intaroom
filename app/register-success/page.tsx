@@ -1,31 +1,42 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
 
 export default function RegisterSuccessPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      router.push("/")
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [router])
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
       <div className="w-full max-w-md p-8 rounded-3xl bg-[#6D3B3B]">
-        {/* Email Icon */}
+        {/* Redirect Icon */}
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 bg-[#E8E1D9] rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-[#5A0D16]" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-              <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </div>
         </div>
 
         <h1 className="text-2xl font-semibold text-white text-center mb-2">
-          Check Your Email
+          Redirecting to Main Page
         </h1>
         <p className="text-white/80 text-center text-sm mb-6">
-          We've sent a verification link to your email address
+          You will be redirected to the main page in just a few seconds
         </p>
 
-        <div className="bg-green-500/15 border border-green-500/30 text-white p-4 rounded-xl mb-4">
-          <p className="text-center text-sm">✅ Account created successfully!</p>
-        </div>
+        {/* <div className="bg-green-500/15 border border-green-500/30 text-white p-4 rounded-xl mb-4">
+          <p className="text-center text-sm"> Account created successfully!</p>
+        </div> */}
 
         {/* <div className="bg-blue-500/15 border border-blue-500/30 text-white p-4 rounded-xl mb-6">
           <p className="text-center text-sm">
@@ -33,7 +44,7 @@ export default function RegisterSuccessPage() {
           </p>
         </div> */}
 
-        <div className="mb-6">
+        {/* <div className="mb-6">
           <p className="text-white/80 text-center text-sm mb-4">Open your email to verify your account:</p>
           <a
             href="https://gmail.com"
@@ -52,7 +63,7 @@ export default function RegisterSuccessPage() {
           <p className="text-white/60 text-xs text-center mt-3">
             💡 Check your spam folder if you don't see the email
           </p>
-        </div>
+        </div> */}
 
         <div className="text-center">
           <Link

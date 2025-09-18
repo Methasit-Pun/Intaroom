@@ -6,7 +6,7 @@ ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS username TEXT UNIQUE,
 ADD COLUMN IF NOT EXISTS line_user_id TEXT UNIQUE,
 ADD COLUMN IF NOT EXISTS avatar_url TEXT,
-ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 3,
+ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 100,
 ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
 
 -- Update the handle_new_user function to properly handle all signup data
@@ -29,7 +29,10 @@ BEGIN
     COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'display_name', ''), 
     new.email, 
     'user', 
-    true, -- Always set email_verified to true to skip verification
+    CASE 
+      WHEN new.raw_user_meta_data->>'line_user_id' IS NOT NULL THEN true 
+      ELSE false 
+    END, -- LINE users are automatically verified
     COALESCE(
       new.raw_user_meta_data->>'username', 
       CASE 
@@ -40,7 +43,7 @@ BEGIN
     ),
     new.raw_user_meta_data->>'line_user_id',
     new.raw_user_meta_data->>'avatar_url',
-    3
+    100
   )
   ON CONFLICT (id) DO UPDATE SET
     full_name = CASE 

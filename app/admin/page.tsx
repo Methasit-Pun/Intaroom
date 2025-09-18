@@ -502,7 +502,17 @@ export default function AdminPage() {
     <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white">
       {/* Header */}
       <div className="p-3 sm:p-4 border-b border-[#8B1F2D]/30 flex justify-between items-center sticky top-0 z-50 bg-[#5A0D16]">
-        <div className="w-6 sm:w-24"></div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.open("/admin/calendar", "_blank")}
+            className="text-white hover:bg-white/10 flex items-center space-x-1 text-xs sm:text-sm"
+          >
+            <Calendar className="h-4 w-4" />
+            <span className="hidden sm:inline">Calendar</span>
+          </Button>
+        </div>
         <h1 className="text-base sm:text-xl font-semibold text-center flex-1">
           <span className="text-[#D4AF37]">INTANIA</span> 
           <span className="hidden sm:inline"> ADMIN DASHBOARD</span>
@@ -793,7 +803,9 @@ export default function AdminPage() {
                     <div className="mb-4">
                       <Input 
                         placeholder="Search users..." 
-                        className="w-full text-sm" 
+                        className="w-full text-sm"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                       />
                     </div>
                     <div className="overflow-x-auto">
@@ -808,7 +820,17 @@ export default function AdminPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {users.slice(0, 5).map((user) => (
+                          {users
+                            .filter((user) => {
+                              if (!searchTerm) return true
+                              const searchLower = searchTerm.toLowerCase()
+                              return (
+                                user.full_name?.toLowerCase().includes(searchLower) ||
+                                user.email.toLowerCase().includes(searchLower) ||
+                                user.phone?.includes(searchTerm)
+                              )
+                            })
+                            .map((user) => (
                             <tr key={user.id} className="border-b hover:bg-gray-50">
                               <td className="p-2">{user.full_name || "N/A"}</td>
                               <td className="p-2">{user.email}</td>
