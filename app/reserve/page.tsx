@@ -97,7 +97,7 @@ export default function ReservePage() {
       } = await supabase.auth.getSession()
       if (session?.user) {
         setUserId(session.user.id)
-        setUserEmail(session.user.email || null)
+        setUserEmail(session.user.email)
 
         // Check if user has telephone number required for reservations
         const { hasPhone, profile, error } = await checkUserTelephoneRequired(session.user.id)
