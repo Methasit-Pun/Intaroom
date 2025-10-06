@@ -107,7 +107,7 @@ export function useTelephoneValidation(
     }
 
     checkUserSession()
-  }, []) // Only run on mount
+  }, [currentUserId, supabase]) // Re-run when currentUserId or supabase changes
 
   return {
     isLoading,
