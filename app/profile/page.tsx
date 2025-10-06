@@ -10,6 +10,7 @@ import { ArrowLeft, User, Phone, Mail, Coins, Save, Loader2, AlertCircle, CheckC
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { useLiff } from "@/components/liff-provider"
+import { validateTelephoneNumber } from "@/lib/user-validation"
 
 interface ProfileData {
   id: string
@@ -48,6 +49,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const setup = searchParams.get("setup")
     const newUser = searchParams.get("new")
+    const required = searchParams.get("required")
     const errorParam = searchParams.get("error")
 
     setIsSetupMode(setup === "true")
@@ -55,6 +57,11 @@ export default function ProfilePage() {
 
     if (errorParam === "true") {
       setError("There was an issue setting up your account. Please complete your profile information.")
+    }
+
+    // If telephone is specifically required, show appropriate message
+    if (required === "telephone") {
+      setError("Please add your telephone number to continue making reservations.")
     }
   }, [searchParams])
 
@@ -72,7 +79,7 @@ export default function ProfilePage() {
         const { data: sessionData } = await supabase.auth.getSession()
         if (sessionData.session) {
           userId = sessionData.session.user.id
-          userEmail = sessionData.session.user.email
+          userEmail = sessionData.session.user.email || null
         }
 
         // If no Supabase session but we have LIFF profile, try to find user by LINE ID
@@ -144,6 +151,21 @@ export default function ProfilePage() {
       return
     }
 
+    // Validate telephone number if provided
+    if (formData.telephone.trim() && !validateTelephoneNumber(formData.telephone.trim())) {
+      setError("Please enter a valid telephone number (8-15 digits)")
+      setSaving(false)
+      return
+    }
+
+    // Check if telephone is required (from URL parameter)
+    const required = searchParams.get("required")
+    if (required === "telephone" && !formData.telephone.trim()) {
+      setError("Telephone number is required to continue making reservations")
+      setSaving(false)
+      return
+    }
+
     try {
       if (!profile) throw new Error("Profile not loaded")
 
@@ -170,10 +192,19 @@ export default function ProfilePage() {
 
       setSuccess(true)
 
-      // If this was setup mode, redirect to main page after a short delay
-      if (isSetupMode) {
+      // Handle redirection after successful update
+      const returnUrl = searchParams.get("returnUrl")
+      const required = searchParams.get("required")
+      
+      if (isSetupMode || required === "telephone") {
         setTimeout(() => {
-          router.push("/")
+          if (returnUrl) {
+            // Redirect back to the original page
+            router.push(returnUrl)
+          } else {
+            // Default redirect to main page
+            router.push("/")
+          }
         }, 2000)
       } else {
         // Clear success message after 3 seconds for regular updates
@@ -323,7 +354,7 @@ export default function ProfilePage() {
 
                 <div className="space-y-2 sm:space-y-3">
                   <label className="block text-sm font-medium text-gray-700">
-                    Emergency Telephone {isSetupMode && <span className="text-red-500">*</span>}
+                    Emergency Telephone {(isSetupMode || searchParams.get("required") === "telephone") && <span className="text-red-500">*</span>}
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -332,10 +363,15 @@ export default function ProfilePage() {
                       value={formData.telephone || ""}
                       onChange={handleChange}
                       className="pl-10 border-gray-300 py-3 sm:py-6 text-sm sm:text-base"
-                      placeholder="Enter emergency contact number"
-                      required={isSetupMode}
+                      placeholder="Enter emergency contact number (e.g., 081-234-5678)"
+                      required={isSetupMode || searchParams.get("required") === "telephone"}
                     />
                   </div>
+                  {searchParams.get("required") === "telephone" && (
+                    <p className="text-xs text-gray-600 ml-1">
+                      📱 Required for room reservations - we'll contact you about your bookings
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2 sm:space-y-3">
