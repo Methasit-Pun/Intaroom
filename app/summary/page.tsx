@@ -30,6 +30,7 @@ import RulesPoliciesModal from "@/components/rules-policies-modal"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { checkUserTelephoneRequired, redirectToTelephoneSetup } from "@/lib/user-validation"
 
 // Function to parse a date string in YYYY-MM-DD format to a Date object
 // This ensures we're working with the date in local timezone
@@ -300,6 +301,20 @@ export default function SummaryPage() {
 
       if (!session?.user) {
         throw new Error("You must be logged in to confirm a reservation")
+      }
+
+      // Check if user has telephone number required for reservations
+      const { hasPhone, error: phoneError } = await checkUserTelephoneRequired(session.user.id)
+      
+      if (phoneError) {
+        throw new Error("Failed to verify your profile. Please try again.")
+      }
+
+      if (!hasPhone) {
+        // Redirect to profile setup with current page as return URL
+        const currentUrl = window.location.pathname + window.location.search
+        redirectToTelephoneSetup(router, currentUrl)
+        return
       }
 
       // Sort time slots chronologically

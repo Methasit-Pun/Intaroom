@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import BookingNameModal from "@/components/booking-name-modal"
-import { AlertCircle, Loader2, ArrowLeft, Coins } from "lucide-react"
+import { AlertCircle, Loader2, ArrowLeft, Coins, Phone } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import {
@@ -16,6 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { checkUserTelephoneRequired, redirectToTelephoneSetup } from "@/lib/user-validation"
 
 // Type for time slot data
 interface TimeSlot {
@@ -77,6 +78,8 @@ export default function ReservePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userCredits, setUserCredits] = useState(0)
   const [isNotEnoughCreditsDialogOpen, setIsNotEnoughCreditsDialogOpen] = useState(false)
+  const [telephoneCheckComplete, setTelephoneCheckComplete] = useState(false)
+  const [requiresTelephoneSetup, setRequiresTelephoneSetup] = useState(false)
 
   const initialLoadComplete = useRef(false)
 
@@ -86,7 +89,7 @@ export default function ReservePage() {
     supabaseKey: supabaseAnonKey,
   })
 
-  // Get current user
+  // Get current user and validate telephone requirement
   const getCurrentUser = useCallback(async () => {
     try {
       const {
@@ -96,21 +99,31 @@ export default function ReservePage() {
         setUserId(session.user.id)
         setUserEmail(session.user.email)
 
-        // Fetch user credits
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("credits")
-          .eq("id", session.user.id)
-          .single()
-
-        if (profileData) {
-          setUserCredits(profileData.credits || 0)
+        // Check if user has telephone number required for reservations
+        const { hasPhone, profile, error } = await checkUserTelephoneRequired(session.user.id)
+        
+        if (error) {
+          console.error("Error checking telephone requirement:", error)
+          setError("Failed to verify user profile. Please try again.")
+          return
         }
+
+        if (!hasPhone) {
+          setRequiresTelephoneSetup(true)
+          setTelephoneCheckComplete(true)
+          return
+        }
+
+        // User has telephone, proceed with normal flow
+        setUserCredits(profile?.credits || 0)
+        setRequiresTelephoneSetup(false)
+        setTelephoneCheckComplete(true)
       } else {
         // For development, use a dummy user ID if not logged in
         setUserId("dummy-user-id")
         setUserEmail("dummy@example.com")
         setUserCredits(100) // Default credits
+        setTelephoneCheckComplete(true)
       }
     } catch (error) {
       console.error("Error getting user session:", error)
@@ -118,6 +131,7 @@ export default function ReservePage() {
       setUserId("dummy-user-id")
       setUserEmail("dummy@example.com")
       setUserCredits(100) // Default credits
+      setTelephoneCheckComplete(true)
     }
   }, [supabase])
 
@@ -289,6 +303,74 @@ export default function ReservePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Handle telephone setup requirement
+  const handleTelephoneSetup = () => {
+    const currentUrl = window.location.pathname + window.location.search
+    redirectToTelephoneSetup(router, currentUrl)
+  }
+
+  // Show loading while checking telephone requirement
+  if (!telephoneCheckComplete) {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin mb-4" />
+        <p className="text-lg">Verifying your profile...</p>
+      </div>
+    )
+  }
+
+  // Show telephone requirement dialog
+  if (requiresTelephoneSetup) {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white">
+        <div className="p-4 border-b border-[#8B1F2D]/30 flex items-center">
+          <Button variant="ghost" className="text-white hover:bg-white/10 mr-2 -ml-2" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-xl font-semibold">Profile Required</h1>
+        </div>
+        
+        <div className="flex-1 flex flex-col items-center justify-center px-4">
+          <div className="max-w-md text-center space-y-6">
+            <div className="w-20 h-20 mx-auto bg-[#8B1F2D] rounded-full flex items-center justify-center">
+              <Phone className="h-10 w-10 text-white" />
+            </div>
+            
+            <div className="space-y-3">
+              <h2 className="text-2xl font-bold text-[#D4AF37]">Telephone Number Required</h2>
+              <p className="text-gray-300 leading-relaxed">
+                To make a room reservation, we need your telephone number for contact purposes. 
+                This helps us reach you regarding your booking confirmations and any important updates.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <Button 
+                onClick={handleTelephoneSetup}
+                className="w-full bg-[#D4AF37] hover:bg-[#B8941F] text-[#5A0D16] font-semibold py-3"
+              >
+                Complete Profile Setup
+              </Button>
+              
+              <Button 
+                variant="ghost" 
+                onClick={handleBack}
+                className="w-full text-white hover:bg-white/10"
+              >
+                Cancel
+              </Button>
+            </div>
+
+            <p className="text-sm text-gray-400">
+              Don't worry - this is a one-time setup. Once completed, you can make reservations anytime.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
