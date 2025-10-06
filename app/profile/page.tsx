@@ -79,7 +79,7 @@ export default function ProfilePage() {
         const { data: sessionData } = await supabase.auth.getSession()
         if (sessionData.session) {
           userId = sessionData.session.user.id
-          userEmail = sessionData.session.user.email || null
+          userEmail = sessionData.session.user.email
         }
 
         // If no Supabase session but we have LIFF profile, try to find user by LINE ID
