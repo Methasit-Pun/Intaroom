@@ -105,21 +105,6 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [analyticsTimeFrame, setAnalyticsTimeFrame] = useState<"day" | "week" | "month">("week")
-  const [analyticsData, setAnalyticsData] = useState<{
-    roomUsage: RoomUsage[]
-    timeSlotUsage: TimeSlotUsage[]
-    totalReservations: number
-    pendingReservations: number
-    approvedReservations: number
-    rejectedReservations: number
-  }>({
-    roomUsage: [],
-    timeSlotUsage: [],
-    totalReservations: 0,
-    pendingReservations: 0,
-    approvedReservations: 0,
-    rejectedReservations: 0,
-  })
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -151,12 +136,6 @@ export default function AdminPage() {
     checkAuth()
   }, [router])
 
-  // Update analytics when reservations change
-  useEffect(() => {
-    if (reservations.length > 0) {
-      generateAnalytics()
-    }
-  }, [reservations, analyticsTimeFrame])
 
   // Group reservations by confirmation number base AND date AND room
   useEffect(() => {
@@ -231,9 +210,8 @@ export default function AdminPage() {
     }
   }
 
-  // Generate analytics data
-  const generateAnalytics = () => {
-    // Determine date range based on timeframe
+  // Derive analytics data directly — no extra render cycle needed
+  const analyticsData = useMemo(() => {
     const now = new Date()
     const startDate = new Date()
 
@@ -250,7 +228,6 @@ export default function AdminPage() {
       return resDate >= startDate && resDate <= now
     })
 
-    // Room usage data
     const roomUsageMap = new Map<number, { name: string; count: number; dates: Map<string, number> }>()
 
     filteredReservations.forEach((res) => {
@@ -263,12 +240,7 @@ export default function AdminPage() {
       } else {
         const roomData = roomUsageMap.get(res.room_id)!
         roomData.count++
-
-        if (roomData.dates.has(res.date)) {
-          roomData.dates.set(res.date, roomData.dates.get(res.date)! + 1)
-        } else {
-          roomData.dates.set(res.date, 1)
-        }
+        roomData.dates.set(res.date, (roomData.dates.get(res.date) ?? 0) + 1)
       }
     })
 
@@ -276,49 +248,28 @@ export default function AdminPage() {
       room_id: id,
       room_name: data.name,
       count: data.count,
-      dates: Array.from(data.dates.entries()).map(([date, count]) => ({
-        date,
-        count,
-      })),
+      dates: Array.from(data.dates.entries()).map(([date, count]) => ({ date, count })),
     }))
 
-    // Time slot usage data
     const timeSlotMap = new Map<string, number>()
-
     filteredReservations.forEach((res) => {
-      const hour = res.start_time.split(":")[0]
-      const timeKey = `${hour}:00`
-
-      if (timeSlotMap.has(timeKey)) {
-        timeSlotMap.set(timeKey, timeSlotMap.get(timeKey)! + 1)
-      } else {
-        timeSlotMap.set(timeKey, 1)
-      }
+      const timeKey = `${res.start_time.split(":")[0]}:00`
+      timeSlotMap.set(timeKey, (timeSlotMap.get(timeKey) ?? 0) + 1)
     })
 
     const timeSlotUsage = Array.from(timeSlotMap.entries())
       .map(([hour, count]) => ({ hour, count }))
-      .sort((a, b) => {
-        const hourA = Number.parseInt(a.hour)
-        const hourB = Number.parseInt(b.hour)
-        return hourA - hourB
-      })
+      .sort((a, b) => Number.parseInt(a.hour) - Number.parseInt(b.hour))
 
-    // Count by status
-    const totalReservations = filteredReservations.length
-    const pendingReservations = filteredReservations.filter((r) => r.status === "Pending").length
-    const approvedReservations = filteredReservations.filter((r) => r.status === "Approved").length
-    const rejectedReservations = filteredReservations.filter((r) => r.status === "Rejected").length
-
-    setAnalyticsData({
+    return {
       roomUsage,
       timeSlotUsage,
-      totalReservations,
-      pendingReservations,
-      approvedReservations,
-      rejectedReservations,
-    })
-  }
+      totalReservations: filteredReservations.length,
+      pendingReservations: filteredReservations.filter((r) => r.status === "Pending").length,
+      approvedReservations: filteredReservations.filter((r) => r.status === "Approved").length,
+      rejectedReservations: filteredReservations.filter((r) => r.status === "Rejected").length,
+    }
+  }, [reservations, analyticsTimeFrame])
 
   // Analytics and other functions remain here since they're admin-specific
 

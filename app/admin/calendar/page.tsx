@@ -196,32 +196,25 @@ export default function AdminCalendarPage() {
         return
       }
 
-      // Enhance reservations with user names (similar to admin page approach)
-      const enhancedReservations = await Promise.all(
-        (data || []).map(async (reservation) => {
-          try {
-            // Get user name
-            const { data: userData } = await supabase
-              .from("profiles")
-              .select("full_name, username, email")
-              .eq("id", reservation.user_id)
-              .single()
+      // Batch fetch all user profiles in a single query to avoid N+1
+      const userIds = [...new Set((data || []).map((r) => r.user_id).filter(Boolean))]
+      const { data: profiles } = userIds.length > 0
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name, username, email")
+            .in("id", userIds)
+        : { data: [] }
 
-            return {
-              ...reservation,
-              user_name: userData?.full_name || userData?.username || userData?.email || "Unknown User",
-              room_name: staticRooms.find(room => room.id === reservation.room_id)?.name || "Unknown Room"
-            }
-          } catch (error) {
-            console.error("Error fetching user data:", error)
-            return {
-              ...reservation,
-              user_name: "Unknown User",
-              room_name: staticRooms.find(room => room.id === reservation.room_id)?.name || "Unknown Room"
-            }
-          }
-        })
-      )
+      const profileMap = new Map((profiles || []).map((p) => [p.id, p]))
+
+      const enhancedReservations = (data || []).map((reservation) => {
+        const profile = profileMap.get(reservation.user_id)
+        return {
+          ...reservation,
+          user_name: profile?.full_name || profile?.username || profile?.email || "Unknown User",
+          room_name: staticRooms.find((room) => room.id === reservation.room_id)?.name || "Unknown Room",
+        }
+      })
 
       console.log(`Found ${enhancedReservations.length} reservations:`, enhancedReservations)
       setReservations(enhancedReservations)
