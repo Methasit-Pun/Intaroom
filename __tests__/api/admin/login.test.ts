@@ -3,21 +3,30 @@
  *
  * Covers:
  *  ✅ Valid credentials → 200 + isAdmin cookie set
- *  ❌ Wrong username    → 401
- *  ❌ Wrong password    → 401
- *  ❌ Missing ADMIN_USERNAME env var → 500
- *  ❌ Missing ADMIN_PASSWORD env var → 500
- *  ❌ Both env vars missing          → 500
- *  ❌ Malformed JSON body            → 400
+ *  ❌ Wrong username    → 401 (admin_profiles row not found)
+ *  ❌ Wrong password    → 401 (SHA-256 hash mismatch)
+ *  ❌ Missing NEXT_PUBLIC_SUPABASE_URL env var → 500
+ *  ❌ Missing SUPABASE_SERVICE_ROLE_KEY env var → 500
+ *  ❌ Both Supabase env vars missing            → 500
+ *  ❌ Malformed JSON body                       → 400
  *  🔒 Cookie security attributes verified (httpOnly, sameSite, path, maxAge)
  *  🔒 Secure flag: false in dev, true in production
  *  🔒 Failed auth must NOT set the isAdmin cookie
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { createHash } from "crypto"
 import type { MockNextResponse } from "../../setup"
+import type { MockedFunction } from "vitest"
+import type { createClient as CreateClientType } from "@supabase/supabase-js"
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const VALID_USERNAME = "admin1"
+const VALID_PASSWORD = "admin123"
+const VALID_PASSWORD_HASH = createHash("sha256").update(VALID_PASSWORD).digest("hex")
+
+// ─── Request helpers ──────────────────────────────────────────────────────────
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/admin/login", {
@@ -35,16 +44,35 @@ function makeMalformedRequest(): Request {
   })
 }
 
+// ─── Supabase client factory helpers ─────────────────────────────────────────
+
+type AdminProfile = { id: number; username: string; password_hash: string }
+
+function makeSupabaseClient(adminData: AdminProfile | null, queryError: unknown = null) {
+  const single = vi.fn().mockResolvedValue({ data: adminData, error: queryError })
+  const eq = vi.fn().mockReturnValue({ single })
+  const select = vi.fn().mockReturnValue({ eq })
+  const from = vi.fn().mockReturnValue({ select })
+  return { from }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("POST /api/admin/login", () => {
-  const VALID_USERNAME = "admin1"
-  const VALID_PASSWORD = "admin123"
+  let mockCreateClient: MockedFunction<typeof CreateClientType>
 
-  beforeEach(() => {
-    vi.stubEnv("ADMIN_USERNAME", VALID_USERNAME)
-    vi.stubEnv("ADMIN_PASSWORD", VALID_PASSWORD)
+  beforeEach(async () => {
+    const supabaseJs = await import("@supabase/supabase-js")
+    mockCreateClient = supabaseJs.createClient as MockedFunction<typeof CreateClientType>
+
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://test.supabase.co")
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
     vi.stubEnv("NODE_ENV", "test")
+
+    // Default: valid admin record with correct password hash
+    mockCreateClient.mockReturnValue(
+      makeSupabaseClient({ id: 1, username: VALID_USERNAME, password_hash: VALID_PASSWORD_HASH }) as any
+    )
   })
 
   afterEach(() => {
@@ -123,7 +151,10 @@ describe("POST /api/admin/login", () => {
 
   // ── Wrong credentials ──────────────────────────────────────────────────────
 
-  it("returns 401 when username is wrong", async () => {
+  it("returns 401 when username is wrong (admin not found in DB)", async () => {
+    mockCreateClient.mockReturnValue(
+      makeSupabaseClient(null, { message: "not found" }) as any
+    )
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: "wrong_user", password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
@@ -132,7 +163,10 @@ describe("POST /api/admin/login", () => {
     expect(body.error).toBe("Invalid admin credentials")
   })
 
-  it("returns 401 when password is wrong", async () => {
+  it("returns 401 when password is wrong (hash mismatch)", async () => {
+    mockCreateClient.mockReturnValue(
+      makeSupabaseClient({ id: 1, username: VALID_USERNAME, password_hash: "wrong_hash_value" }) as any
+    )
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: VALID_USERNAME, password: "wrong_pass" }))) as unknown as MockNextResponse
 
@@ -142,6 +176,9 @@ describe("POST /api/admin/login", () => {
   })
 
   it("returns 401 when both username and password are wrong", async () => {
+    mockCreateClient.mockReturnValue(
+      makeSupabaseClient(null, { message: "not found" }) as any
+    )
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: "bad", password: "bad" }))) as unknown as MockNextResponse
 
@@ -149,16 +186,19 @@ describe("POST /api/admin/login", () => {
   })
 
   it("does NOT set isAdmin cookie when credentials are wrong", async () => {
+    mockCreateClient.mockReturnValue(
+      makeSupabaseClient(null, { message: "not found" }) as any
+    )
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: "wrong", password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
     expect(res.cookies.has("isAdmin")).toBe(false)
   })
 
-  // ── Missing env vars ───────────────────────────────────────────────────────
+  // ── Missing Supabase env vars ──────────────────────────────────────────────
 
-  it("returns 500 when ADMIN_USERNAME env var is not set", async () => {
-    vi.stubEnv("ADMIN_USERNAME", "")
+  it("returns 500 when NEXT_PUBLIC_SUPABASE_URL env var is not set", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "")
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: VALID_USERNAME, password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
@@ -167,8 +207,8 @@ describe("POST /api/admin/login", () => {
     expect(body.error).toBe("Server configuration error")
   })
 
-  it("returns 500 when ADMIN_PASSWORD env var is not set", async () => {
-    vi.stubEnv("ADMIN_PASSWORD", "")
+  it("returns 500 when SUPABASE_SERVICE_ROLE_KEY env var is not set", async () => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "")
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: VALID_USERNAME, password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
@@ -177,16 +217,16 @@ describe("POST /api/admin/login", () => {
     expect(body.error).toBe("Server configuration error")
   })
 
-  it("returns 500 when both credential env vars are missing", async () => {
-    vi.stubEnv("ADMIN_USERNAME", "")
-    vi.stubEnv("ADMIN_PASSWORD", "")
+  it("returns 500 when both Supabase env vars are missing", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "")
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "")
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: VALID_USERNAME, password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
     expect(res.status).toBe(500)
   })
 
-  // ── Malformed request ──────────────────────────────────────────────────────
+  // ── Malformed / incomplete request ─────────────────────────────────────────
 
   it("returns 400 on malformed JSON body", async () => {
     const { POST } = await import("@/app/api/admin/login/route")
@@ -199,9 +239,8 @@ describe("POST /api/admin/login", () => {
 
   it("returns 400 when body has no username field", async () => {
     const { POST } = await import("@/app/api/admin/login/route")
-    // username is undefined → won't match env var → 401 (not 400 — JSON parses fine)
     const res = (await POST(makeRequest({ password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(400)
   })
 })
