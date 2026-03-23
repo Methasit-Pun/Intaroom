@@ -36,6 +36,12 @@ import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import LogoutButton from "@/components/logout-button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import {
+  AdminDashboardSkeleton,
+  ReservationsListSkeleton,
+  AnalyticsDashboardSkeleton,
+  ReservationCardSkeleton
+} from "@/components/admin/admin-skeletons"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Line, Bar, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -57,7 +63,7 @@ interface UserType {
   id: string
   email: string
   full_name?: string
-  phone?: string
+  telephone?: string
   is_banned?: boolean
   ban_reason?: string
   ban_until?: string
@@ -169,39 +175,60 @@ export default function AdminPage() {
     setError(null)
 
     try {
-      // Query 1: reservations + room name joined in one shot
+      console.log("Fetching reservations...")
+
+      // Create a new Supabase client for this request
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
+      // Fetch all reservations
       const { data: reservationsData, error: reservationsError } = await supabase
         .from("reservations")
-        .select("*, rooms(name)")
+        .select("*")
         .order("date", { ascending: false })
 
-      if (reservationsError) throw reservationsError
-
-      if (!reservationsData || reservationsData.length === 0) {
-        setReservations([])
-        return
+      if (reservationsError) {
+        console.error("Error fetching reservations:", reservationsError)
+        throw reservationsError
       }
 
-      // Query 2: batch fetch all profiles in a single .in() query (no N+1)
-      const uniqueUserIds = [...new Set(reservationsData.map((r) => r.user_id).filter(Boolean))]
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, phone")
-        .in("id", uniqueUserIds)
+      // Fetch room names and user names
+      const enhancedReservations = await Promise.all(
+        (reservationsData || []).map(async (reservation) => {
+          try {
+            // Get room name
+            const { data: roomData } = await supabase
+              .from("rooms")
+              .select("name")
+              .eq("id", reservation.room_id)
+              .single()
 
-      const profileMap = new Map((profilesData || []).map((p) => [p.id, p]))
+            // Get user name
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("full_name, email, telephone")
+              .eq("id", reservation.user_id)
+              .single()
 
-      const enhancedReservations = reservationsData.map((reservation) => {
-        const profile = profileMap.get(reservation.user_id)
-        const room = reservation.rooms as { name: string } | null
-        return {
-          ...reservation,
-          room_name: room?.name || `Room ${reservation.room_id}`,
-          user_name: profile?.full_name || profile?.email || "Unknown User",
-          contact_email: profile?.email || reservation.contact_email,
-          contact_phone: profile?.phone || reservation.contact_phone,
-        }
-      })
+            return {
+              ...reservation,
+              room_name: roomData?.name || `Room ${reservation.room_id}`,
+              user_name: userData?.full_name || userData?.email || "Unknown User",
+              contact_email: userData?.email || reservation.contact_email,
+              contact_phone: userData?.telephone || reservation.contact_phone,
+            }
+          } catch (error) {
+            console.error("Error fetching related data:", error)
+            return {
+              ...reservation,
+              room_name: `Room ${reservation.room_id}`,
+              user_name: "Unknown User",
+            }
+          }
+        }),
+      )
 
       setReservations(enhancedReservations)
     } catch (error: any) {
@@ -215,6 +242,11 @@ export default function AdminPage() {
   // Fetch users from Supabase
   const fetchUsers = async () => {
     try {
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
       const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("*")
 
       if (profilesError) {
@@ -435,6 +467,11 @@ export default function AdminPage() {
     setActionLoading(true)
 
     try {
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
       const banUntil =
         banDialog.type === "temporary"
           ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 1 month
@@ -465,7 +502,10 @@ export default function AdminPage() {
     }
   }
 
-
+  // Show skeleton loading on initial load
+  if (loading && reservations.length === 0) {
+    return <AdminDashboardSkeleton />
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-[#5A0D16] text-white">
@@ -796,14 +836,14 @@ export default function AdminPage() {
                               return (
                                 user.full_name?.toLowerCase().includes(searchLower) ||
                                 user.email.toLowerCase().includes(searchLower) ||
-                                user.phone?.includes(searchTerm)
+                                user.telephone?.includes(searchTerm)
                               )
                             })
                             .map((user) => (
                             <tr key={user.id} className="border-b hover:bg-gray-50">
                               <td className="p-2">{user.full_name || "N/A"}</td>
                               <td className="p-2">{user.email}</td>
-                              <td className="p-2">{user.phone || "N/A"}</td>
+                              <td className="p-2">{user.telephone || "N/A"}</td>
                               <td className="p-2">
                                 {user.is_banned ? (
                                   <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">
@@ -1022,9 +1062,45 @@ function ReservationTable({
       {/* Table */}
       <div className="overflow-x-auto">
         {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-          </div>
+          <>
+            <div className="hidden lg:block">
+              <table className="w-full table-fixed">
+                <thead className="bg-gray-300 text-left">
+                  <tr>
+                    <th className="p-3 font-medium w-[18%] text-sm">User</th>
+                    <th className="p-3 font-medium w-[12%] text-sm">Room</th>
+                    <th className="p-3 font-medium w-[15%] text-sm">Date & Time</th>
+                    <th className="p-3 font-medium w-[20%] text-sm">Purpose</th>
+                    <th className="p-3 font-medium w-[10%] text-sm">Status</th>
+                    <th className="p-3 font-medium w-[25%] text-sm">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <tr key={index}>
+                      {Array.from({ length: 6 }).map((_, cellIndex) => (
+                        <td key={cellIndex} className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                            <div className="h-4 bg-gray-200 rounded animate-pulse flex-1" />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Mobile Card View Loading */}
+            <div className="lg:hidden bg-white">
+              <div className="divide-y divide-gray-200">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <ReservationCardSkeleton key={index} />
+                ))}
+              </div>
+            </div>
+          </>
         ) : (
           <>
             {/* Desktop Table View */}

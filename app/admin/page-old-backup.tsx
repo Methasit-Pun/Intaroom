@@ -169,39 +169,60 @@ export default function AdminPage() {
     setError(null)
 
     try {
-      // Query 1: reservations + room name joined in one shot
+      console.log("Fetching reservations...")
+
+      // Create a new Supabase client for this request
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
+      // Fetch all reservations
       const { data: reservationsData, error: reservationsError } = await supabase
         .from("reservations")
-        .select("*, rooms(name)")
+        .select("*")
         .order("date", { ascending: false })
 
-      if (reservationsError) throw reservationsError
-
-      if (!reservationsData || reservationsData.length === 0) {
-        setReservations([])
-        return
+      if (reservationsError) {
+        console.error("Error fetching reservations:", reservationsError)
+        throw reservationsError
       }
 
-      // Query 2: batch fetch all profiles in a single .in() query (no N+1)
-      const uniqueUserIds = [...new Set(reservationsData.map((r) => r.user_id).filter(Boolean))]
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, phone")
-        .in("id", uniqueUserIds)
+      // Fetch room names and user names
+      const enhancedReservations = await Promise.all(
+        (reservationsData || []).map(async (reservation) => {
+          try {
+            // Get room name
+            const { data: roomData } = await supabase
+              .from("rooms")
+              .select("name")
+              .eq("id", reservation.room_id)
+              .single()
 
-      const profileMap = new Map((profilesData || []).map((p) => [p.id, p]))
+            // Get user name
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("full_name, email, phone")
+              .eq("id", reservation.user_id)
+              .single()
 
-      const enhancedReservations = reservationsData.map((reservation) => {
-        const profile = profileMap.get(reservation.user_id)
-        const room = reservation.rooms as { name: string } | null
-        return {
-          ...reservation,
-          room_name: room?.name || `Room ${reservation.room_id}`,
-          user_name: profile?.full_name || profile?.email || "Unknown User",
-          contact_email: profile?.email || reservation.contact_email,
-          contact_phone: profile?.phone || reservation.contact_phone,
-        }
-      })
+            return {
+              ...reservation,
+              room_name: roomData?.name || `Room ${reservation.room_id}`,
+              user_name: userData?.full_name || userData?.email || "Unknown User",
+              contact_email: userData?.email || reservation.contact_email,
+              contact_phone: userData?.phone || reservation.contact_phone,
+            }
+          } catch (error) {
+            console.error("Error fetching related data:", error)
+            return {
+              ...reservation,
+              room_name: `Room ${reservation.room_id}`,
+              user_name: "Unknown User",
+            }
+          }
+        }),
+      )
 
       setReservations(enhancedReservations)
     } catch (error: any) {
@@ -215,6 +236,11 @@ export default function AdminPage() {
   // Fetch users from Supabase
   const fetchUsers = async () => {
     try {
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
       const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("*")
 
       if (profilesError) {
@@ -435,6 +461,11 @@ export default function AdminPage() {
     setActionLoading(true)
 
     try {
+      const supabase = createClientComponentClient({
+        supabaseUrl,
+        supabaseKey: supabaseAnonKey,
+      })
+
       const banUntil =
         banDialog.type === "temporary"
           ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 1 month

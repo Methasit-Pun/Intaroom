@@ -49,8 +49,9 @@ export default function LoginPage() {
         console.log("🔍 Checking authentication state...")
 
         // Check admin login first (highest priority)
+        // Middleware will verify the HttpOnly cookie — if it's expired, /admin redirects back here
         if (localStorage.getItem("isAdmin") === "true") {
-          console.log("👑 Admin already logged in, redirecting to admin panel")
+          console.log("👑 Admin localStorage found, redirecting to admin panel")
           if (isMounted) router.push("/admin")
           return
         }
@@ -119,19 +120,23 @@ export default function LoginPage() {
 
     try {
       if (userType === "admin") {
-        // Admin login - completely bypass Supabase auth
-        if (username === "admin1" && password === "admin123") {
-          localStorage.setItem("isAdmin", "true")
-          localStorage.setItem("adminEmail", username)
-          document.cookie = `isAdmin=true; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
-          console.log("✅ Admin login successful, redirecting...")
+        // Admin login - validated server-side via API route
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        })
 
-          // Use router for navigation instead of window.location
-          router.push("/admin")
-          return
-        } else {
+        if (!res.ok) {
           throw new Error("Invalid admin credentials")
         }
+
+        // Store only non-sensitive UI state in localStorage
+        localStorage.setItem("adminEmail", username)
+        localStorage.setItem("isAdmin", "true")
+        console.log("✅ Admin login successful, redirecting...")
+        router.push("/admin")
+        return
       } else {
         // Regular user login
         let email = username
