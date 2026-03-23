@@ -110,8 +110,8 @@ export default function SummaryPage() {
           // Get user profile
           const { data: profileData } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
 
-          setBookingData({
-            ...bookingData,
+          setBookingData((prev) => ({
+            ...prev,
             bookingName,
             roomId,
             roomName,
@@ -123,11 +123,11 @@ export default function SummaryPage() {
             contactPhone: profileData?.telephone || "",
             userCredits,
             requiredCredits,
-          })
+          }))
         } else {
           // If no session, just use the URL params
-          setBookingData({
-            ...bookingData,
+          setBookingData((prev) => ({
+            ...prev,
             bookingName,
             roomId,
             roomName,
@@ -136,7 +136,7 @@ export default function SummaryPage() {
             confirmationNumber,
             userCredits,
             requiredCredits,
-          })
+          }))
         }
       } catch (error) {
         console.error("Error loading data:", error)
@@ -144,8 +144,6 @@ export default function SummaryPage() {
     }
 
     loadData()
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, supabase])
 
   // Format date for display
@@ -634,8 +632,8 @@ export default function SummaryPage() {
                 <div>
                   <p className="font-medium">Special Requests</p>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {bookingData.specialRequests.map((request, index) => (
-                      <span key={index} className="px-2 py-1 bg-gray-100 rounded-md text-xs">
+                    {bookingData.specialRequests.map((request) => (
+                      <span key={request} className="px-2 py-1 bg-gray-100 rounded-md text-xs">
                         {request}
                       </span>
                     ))}

@@ -417,7 +417,8 @@ export async function fetchAnalyticsOptimized(timeFrame: 'day' | 'week' | 'month
     if (timeSlotUsageResult.data) {
       timeSlotUsageResult.data.forEach((item: any) => {
         if (!item?.start_time || !item?.end_time) return
-        const baseConfirmation = item.confirmation_number?.split('-')[0] || item.confirmation_number
+        const confMatch = item.confirmation_number?.match(/^(INR-\d{4,}(?:-\d{2}-\d{2})?)(-\d+)?$/)
+        const baseConfirmation = confMatch ? confMatch[1] : (item.confirmation_number || '')
         const groupKey = `${baseConfirmation}-${item.date}-${item.room_id}-${item.user_id || 'unknown'}`
         const existing = slotGroups.get(groupKey)
 

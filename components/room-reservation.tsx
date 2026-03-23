@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
 import { ChevronLeft, ChevronRight, Loader2, User, Coins, CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -241,7 +241,7 @@ export default function RoomReservation() {
     return dates
   }
 
-  const weekDates = getWeekDates()
+  const weekDates = useMemo(() => getWeekDates(), [selectedDate])
 
   // Format date range for display
   const formatDateRange = () => {
@@ -251,21 +251,18 @@ export default function RoomReservation() {
   }
 
   // Generate calendar days for the current month view
-  const generateCalendarDays = () => {
+  const calendarDays = useMemo(() => {
     const days = []
     const firstDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
     const lastDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
 
-    // Get the first Sunday before or on the first day of the month
     const startDate = new Date(firstDay)
     startDate.setDate(firstDay.getDate() - firstDay.getDay())
 
-    // Get the last Saturday after or on the last day of the month
     const endDate = new Date(lastDay)
     const daysToAdd = 6 - lastDay.getDay()
     endDate.setDate(lastDay.getDate() + daysToAdd)
 
-    // Generate all days in the calendar view
     const currentDate = new Date(startDate)
     while (currentDate <= endDate) {
       days.push(new Date(currentDate))
@@ -273,7 +270,7 @@ export default function RoomReservation() {
     }
 
     return days
-  }
+  }, [selectedDate])
 
   // Check if a time slot has a reservation
   const getReservation = (time: string) => {
@@ -511,7 +508,7 @@ export default function RoomReservation() {
 
             {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-1 p-2 bg-gray-100">
-              {generateCalendarDays().map((day, index) => {
+              {calendarDays.map((day, index) => {
                 const isSelected =
                   day &&
                   day.getDate() === selectedDate.getDate() &&

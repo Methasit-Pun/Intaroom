@@ -135,6 +135,7 @@ export default function AdminCalendarPage() {
         .select("*")
         .gte("date", startDate)
         .lte("date", endDate)
+        .neq("status", "Cancelled")
         .order("date", { ascending: true })
 
       if (roomId !== "all") {
@@ -179,6 +180,7 @@ export default function AdminCalendarPage() {
         .from("reservations")
         .select("*")
         .eq("date", dateStr)
+        .neq("status", "Cancelled")
         .order("start_time", { ascending: true })
 
       if (roomId !== "all") {
@@ -448,7 +450,7 @@ export default function AdminCalendarPage() {
 
                       return (
                         <button
-                          key={index}
+                          key={day ? day.toISOString() : `empty-${index}`}
                           className={cn(
                             "h-10 w-10 rounded-lg flex items-center justify-center text-sm relative transition-all duration-200",
                             !day ? "invisible" : "",
@@ -476,11 +478,6 @@ export default function AdminCalendarPage() {
                           }}
                         >
                           {day ? day.getDate() : ""}
-                          
-                          {/* Today indicator */}
-                          {isToday && !isSelected && (
-                            <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-[#5A0D16] rounded-full"></div>
-                          )}
                           
                           {/* Status dots */}
                           {day && dayStatuses.length > 0 && (

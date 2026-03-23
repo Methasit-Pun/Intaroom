@@ -1,11 +1,11 @@
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { getAdminSession } from "@/lib/admin-auth"
 
-// Update the middleware to handle admin login better
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const res = NextResponse.next()
-  
+
   const isAdminRoute = req.nextUrl.pathname.startsWith("/admin")
   const isAuthRoute =
     req.nextUrl.pathname.startsWith("/login") ||
@@ -14,20 +14,27 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/auth") ||
     req.nextUrl.pathname.startsWith("/register-success") ||
     req.nextUrl.pathname.startsWith("/reset-password")
-  
-  // Static files and API routes - skip authentication
-  const isStaticFile = req.nextUrl.pathname.startsWith("/_next") ||
-                      req.nextUrl.pathname.startsWith("/api") ||
-                      req.nextUrl.pathname.includes(".")
+
+  // Static files and API routes — skip authentication
+  const isStaticFile =
+    req.nextUrl.pathname.startsWith("/_next") ||
+    req.nextUrl.pathname.startsWith("/api") ||
+    req.nextUrl.pathname.includes(".")
 
   if (isStaticFile) {
     return res
   }
 
-  // Handle admin routes
+  // ── Admin routes ────────────────────────────────────────────────────────────
+  // First check the HttpOnly isAdmin cookie set by /api/admin/login.
+  // Falls back to Supabase session + profiles.role for Supabase-based admins.
   if (isAdminRoute) {
-    const adminCookie = req.cookies.get("isAdmin")?.value === "true"
-    if (!adminCookie) {
+    const isAdminCookie = req.cookies.get("isAdmin")?.value === "true"
+    if (isAdminCookie) {
+      return res
+    }
+    const { isAdmin } = await getAdminSession(req, res)
+    if (!isAdmin) {
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/login"
       return NextResponse.redirect(redirectUrl)
@@ -40,7 +47,7 @@ export async function middleware(req: NextRequest) {
     return res
   }
 
-  // For protected routes, check session
+  // ── Protected user routes ───────────────────────────────────────────────────
   const supabase = createMiddlewareClient({ req, res })
   const {
     data: { session },
@@ -49,24 +56,15 @@ export async function middleware(req: NextRequest) {
   if (!session) {
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = "/login"
-    redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
+    redirectUrl.searchParams.set("redirectedFrom", req.nextUrl.pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
   return res
 }
 
-// Specify which routes this middleware should run on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)  
-     * - favicon.ico (favicon file)
-     * - api routes
-     * - static assets
-     */
     "/((?!_next/static|_next/image|favicon.ico|api|.*\\..*).*)",
   ],
 }

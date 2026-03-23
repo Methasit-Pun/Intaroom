@@ -83,6 +83,16 @@ export default function LoginPage() {
         // Check Supabase session (lowest priority)
         const { data } = await supabase.auth.getSession()
         if (data.session) {
+          // If user logged in without "Remember Me", sessionStorage flag is gone after
+          // the browser closes (sessionStorage doesn't survive restarts). Sign them out.
+          const remembered = sessionStorage.getItem("rememberMe")
+          const sessionActive = sessionStorage.getItem("sessionActive")
+          if (!remembered && !sessionActive) {
+            console.log("🚪 Session found but not remembered — signing out")
+            await supabase.auth.signOut()
+            return
+          }
+          sessionStorage.setItem("sessionActive", "true")
           console.log("🔐 Supabase session found, redirecting to main page")
           console.log("👤 Session user:", data.session.user.email)
           if (isMounted) router.push("/")
@@ -116,7 +126,7 @@ export default function LoginPage() {
       setLoading(false)
       setError("Login is taking too long. Please try again.")
       console.error("⏰ Login timeout reached")
-    }, 15000) // 15 seconds timeout
+    }, 20000) // 20 seconds timeout
 
     try {
       if (userType === "admin") {
@@ -222,6 +232,14 @@ export default function LoginPage() {
 
         console.log("🎉 Login successful, redirecting to main page")
 
+        // Persist "remember me" choice so the auth check knows what to do
+        if (rememberMe) {
+          sessionStorage.setItem("rememberMe", "true")
+        } else {
+          sessionStorage.removeItem("rememberMe")
+        }
+        sessionStorage.setItem("sessionActive", "true")
+
         // Clear the timeout since login was successful
         clearTimeout(loginTimeout)
 
@@ -282,20 +300,6 @@ export default function LoginPage() {
             Admin
           </button>
         </div>
-{/* 
-        {userType === "user" && (
-          <div className="mb-6">
-            <LineLoginButton />
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/20"></div>
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-[#6D3B3B] px-2 text-white/60">or continue with email</span>
-              </div>
-            </div>
-          </div>
-        )} */}
 
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
@@ -370,18 +374,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Debug info in development */}
-        {/* {process.env.NODE_ENV === "development" && (
-          <div className="mt-4 p-3 bg-black/20 rounded-lg text-xs text-white/70">
-            <p>🔧 Debug Mode: Detailed logging enabled</p>
-            <p>📊 Check browser console for authentication details</p>
-            <p>🧪 Test credentials: MB / abc123</p>
-          </div>
-        )} */}
       </div>
-      
-      {/* Auth Debug Component - Hidden in production */}
-      {/* <AuthDebug /> */}
     </div>
   )
 }

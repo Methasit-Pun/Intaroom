@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   Search,
@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   Mail,
   Phone,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -86,7 +87,9 @@ export default function AdminPage() {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     ids: number[] | null
-    action: "approve" | "reject" | null
+    action: "approve" | "reject" | "cancel" | null
+    userId?: string
+    creditCount?: number
   }>({ open: false, ids: null, action: null })
   const [banDialog, setBanDialog] = useState<{
     open: boolean
@@ -319,37 +322,57 @@ export default function AdminPage() {
 
   // Analytics and other functions remain here since they're admin-specific
 
+  // Returns true if the reservation is still within the cancellable window:
+  // future dates (any time) OR past dates within 7 days from today
+  const canCancelReservation = (date: string): boolean => {
+    const reservationDate = new Date(date)
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 7)
+    cutoff.setHours(0, 0, 0, 0)
+    return reservationDate >= cutoff
+  }
+
   // Handle toggle sort direction
   const toggleSortDirection = () => {
     setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
   }
 
   // Filter reservations based on search term and status filter
-  const filteredReservations = groupedReservations.filter((reservation) => {
-    const matchesSearch =
-      reservation.booking_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.room_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.date.includes(searchTerm) ||
-      reservation.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.contact_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reservation.contact_phone?.includes(searchTerm) ||
-      reservation.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredReservations = useMemo(
+    () =>
+      groupedReservations.filter((reservation) => {
+        const matchesSearch =
+          reservation.booking_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          reservation.room_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          reservation.date.includes(searchTerm) ||
+          reservation.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          reservation.contact_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          reservation.contact_phone?.includes(searchTerm) ||
+          reservation.purpose.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === "All" || reservation.status === statusFilter
+        const matchesStatus = statusFilter === "All" || reservation.status === statusFilter
 
-    const matchesTab =
-      currentTab === "all" ||
-      (currentTab === "pending" && reservation.status === "Pending") ||
-      (currentTab === "approved" && reservation.status === "Approved") ||
-      (currentTab === "rejected" && reservation.status === "Rejected") ||
-      currentTab === "analytics"
+        const matchesTab =
+          currentTab === "all" ||
+          (currentTab === "pending" && reservation.status === "Pending") ||
+          (currentTab === "approved" && (reservation.status === "Approved" || reservation.status === "Cancelled")) ||
+          (currentTab === "rejected" && reservation.status === "Rejected") ||
+          currentTab === "analytics"
 
-    return matchesSearch && matchesStatus && matchesTab
-  })
+        return matchesSearch && matchesStatus && matchesTab
+      }),
+    [groupedReservations, searchTerm, statusFilter, currentTab],
+  )
 
   // Handle approve/reject actions
   const handleAction = (ids: number[], action: "approve" | "reject") => {
     setConfirmDialog({ open: true, ids, action })
+  }
+
+  // Handle cancel (approved → Cancelled + credit refund)
+  const handleCancel = (ids: number[], userId: string, date: string) => {
+    if (!canCancelReservation(date)) return // guard — should not be reachable via UI
+    setConfirmDialog({ open: true, ids, action: "cancel", userId, creditCount: ids.length })
   }
 
   const confirmAction = async () => {
@@ -366,16 +389,35 @@ export default function AdminPage() {
         ) || null
       }
 
+      const newStatus =
+        confirmDialog.action === "approve" ? "Approved" :
+        confirmDialog.action === "cancel" ? "Cancelled" : "Rejected"
+
       // Update reservation status using utility function
       await updateReservationStatus(
         confirmDialog.ids,
-        confirmDialog.action === "approve" ? "Approved" : "Rejected",
+        newStatus,
         supabaseUrl,
         supabaseAnonKey
       )
 
+      // Refund credits when cancelling an approved reservation
+      if (confirmDialog.action === "cancel" && confirmDialog.userId && confirmDialog.creditCount) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("credits")
+          .eq("id", confirmDialog.userId)
+          .single()
+        if (profile) {
+          await supabase
+            .from("profiles")
+            .update({ credits: profile.credits + confirmDialog.creditCount })
+            .eq("id", confirmDialog.userId)
+        }
+      }
+
       // If approving, automatically reject overlapping reservations and generate QR code
-      if (confirmDialog.action === "approve" && approvedReservation) {
+      if (confirmDialog.action === "approve" && approvedReservation && newStatus === "Approved") {
         try {
           // First, reject any overlapping pending reservations
           const rejectionResult = await rejectOverlappingReservations(
@@ -543,6 +585,8 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
+                onCancel={handleCancel}
+                canCancel={canCancelReservation}
                 onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
@@ -560,6 +604,8 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
+                onCancel={handleCancel}
+                canCancel={canCancelReservation}
                 onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
@@ -577,6 +623,8 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
+                onCancel={handleCancel}
+                canCancel={canCancelReservation}
                 onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
@@ -594,6 +642,8 @@ export default function AdminPage() {
               <ReservationTable
                 reservations={filteredReservations}
                 onAction={handleAction}
+                onCancel={handleCancel}
+                canCancel={canCancelReservation}
                 onBanUser={handleBanUser}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
@@ -858,11 +908,22 @@ export default function AdminPage() {
         <DialogContent className="bg-white text-gray-800">
           <DialogHeader>
             <DialogTitle>
-              {confirmDialog.action === "approve" ? "Approve Reservation" : "Reject Reservation"}
+              {confirmDialog.action === "approve" ? "Approve Reservation" :
+               confirmDialog.action === "cancel" ? "Cancel Approved Reservation" :
+               "Reject Reservation"}
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to {confirmDialog.action === "approve" ? "approve" : "reject"} this reservation?
-              {confirmDialog.action === "reject" && " This action cannot be undone."}
+              {confirmDialog.action === "approve" && "Are you sure you want to approve this reservation?"}
+              {confirmDialog.action === "reject" && "Are you sure you want to reject this reservation? This action cannot be undone."}
+              {confirmDialog.action === "cancel" && (
+                <>
+                  Are you sure you want to cancel this approved reservation?
+                  <br />
+                  <span className="text-orange-600 font-medium">
+                    {confirmDialog.creditCount} credit{confirmDialog.creditCount !== 1 ? "s" : ""} will be refunded to the user.
+                  </span>
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-2 sm:justify-end">
@@ -871,11 +932,13 @@ export default function AdminPage() {
               onClick={() => setConfirmDialog({ open: false, ids: null, action: null })}
               disabled={actionLoading}
             >
-              Cancel
+              Go Back
             </Button>
             <Button
               className={cn(
-                confirmDialog.action === "approve" ? "bg-[#5A0D16] hover:bg-[#4A0B12]" : "bg-red-600 hover:bg-red-700",
+                confirmDialog.action === "approve" ? "bg-[#5A0D16] hover:bg-[#4A0B12]" :
+                confirmDialog.action === "cancel" ? "bg-orange-600 hover:bg-orange-700" :
+                "bg-red-600 hover:bg-red-700",
                 "text-white",
               )}
               onClick={confirmAction}
@@ -887,9 +950,20 @@ export default function AdminPage() {
                   Processing...
                 </>
               ) : confirmDialog.action === "approve" ? (
-                "Approve"
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Approve
+                </>
+              ) : confirmDialog.action === "cancel" ? (
+                <>
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Cancel Reservation
+                </>
               ) : (
-                "Reject"
+                <>
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Reject
+                </>
               )}
             </Button>
           </DialogFooter>
@@ -955,6 +1029,8 @@ export default function AdminPage() {
 interface ReservationTableProps {
   reservations: GroupedReservation[]
   onAction: (ids: number[], action: "approve" | "reject") => void
+  onCancel: (ids: number[], userId: string, date: string) => void
+  canCancel: (date: string) => boolean
   onBanUser: (userId: string, userName: string, type: "temporary" | "permanent") => void
   searchTerm: string
   setSearchTerm: (term: string) => void
@@ -970,6 +1046,8 @@ interface ReservationTableProps {
 function ReservationTable({
   reservations,
   onAction,
+  onCancel,
+  canCancel,
   onBanUser,
   searchTerm,
   setSearchTerm,
@@ -1014,6 +1092,7 @@ function ReservationTable({
               <DropdownMenuItem onClick={() => setStatusFilter("Pending")}>Pending</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setStatusFilter("Approved")}>Approved</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setStatusFilter("Rejected")}>Rejected</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter("Cancelled")}>Cancelled</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1027,8 +1106,8 @@ function ReservationTable({
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
-            <div className="hidden lg:block">
+            {/* Desktop/Tablet Table View */}
+            <div className="hidden md:block">
               <table className="w-full table-fixed">
                 <thead className="bg-gray-300 text-left">
                   <tr>
@@ -1078,9 +1157,9 @@ function ReservationTable({
                               <Calendar className="h-3 w-3 text-gray-500 flex-shrink-0" />
                               <span className="truncate text-sm">{formatDate(reservation.date)}</span>
                             </div>
-                            <div className="flex items-center gap-1 text-sm text-gray-600">
-                              <Clock className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{formatTimeSlots(reservation.time_slots)}</span>
+                            <div className="flex items-start gap-1 text-sm text-gray-600">
+                              <Clock className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                              <span className="break-words">{formatTimeSlots(reservation.time_slots)}</span>
                             </div>
                           </div>
                         </td>
@@ -1099,6 +1178,7 @@ function ReservationTable({
                               reservation.status === "Pending" && "bg-yellow-100 text-yellow-800",
                               reservation.status === "Approved" && "bg-green-100 text-green-800",
                               reservation.status === "Rejected" && "bg-red-100 text-red-800",
+                              reservation.status === "Cancelled" && "bg-orange-100 text-orange-800",
                             )}
                           >
                             {reservation.status}
@@ -1126,7 +1206,20 @@ function ReservationTable({
                                 </Button>
                               </>
                             )}
-                            {reservation.status !== "Pending" && (
+                            {reservation.status === "Approved" && canCancel(reservation.date) && (
+                              <Button
+                                size="sm"
+                                className="bg-orange-600 hover:bg-orange-700 text-white text-xs"
+                                onClick={() => onCancel(reservation.ids, reservation.user_id, reservation.date)}
+                              >
+                                <AlertTriangle className="h-4 w-4 mr-1" />
+                                Cancel
+                              </Button>
+                            )}
+                            {reservation.status === "Approved" && !canCancel(reservation.date) && (
+                              <span className="text-xs text-gray-400 italic">Past 7-day window</span>
+                            )}
+                            {(reservation.status === "Rejected" || reservation.status === "Cancelled") && (
                               <span className="text-sm text-gray-500 italic">No actions available</span>
                             )}
 
@@ -1188,6 +1281,7 @@ function ReservationTable({
                             reservation.status === "Pending" && "bg-yellow-100 text-yellow-800",
                             reservation.status === "Approved" && "bg-green-100 text-green-800",
                             reservation.status === "Rejected" && "bg-red-100 text-red-800",
+                            reservation.status === "Cancelled" && "bg-orange-100 text-orange-800",
                           )}
                         >
                           {reservation.status}
@@ -1249,6 +1343,19 @@ function ReservationTable({
                               Reject
                             </Button>
                           </>
+                        )}
+                        {reservation.status === "Approved" && canCancel(reservation.date) && (
+                          <Button
+                            size="sm"
+                            className="bg-orange-600 hover:bg-orange-700 text-white text-xs flex-1"
+                            onClick={() => onCancel(reservation.ids, reservation.user_id, reservation.date)}
+                          >
+                            <AlertTriangle className="h-4 w-4 mr-1" />
+                            Cancel Reservation
+                          </Button>
+                        )}
+                        {reservation.status === "Approved" && !canCancel(reservation.date) && (
+                          <span className="text-xs text-gray-400 italic">Past 7-day window</span>
                         )}
                         
                         <DropdownMenu>

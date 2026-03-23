@@ -65,6 +65,12 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
   // Initialize LIFF
   useEffect(() => {
     const initLiff = async () => {
+      if (!liffId) {
+        // No LIFF ID configured — skip LINE init, app works in non-LINE mode
+        setIsReady(true)
+        return
+      }
+
       try {
         // Import LIFF dynamically
         const liffModule = await import("@line/liff")

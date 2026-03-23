@@ -177,7 +177,7 @@ export default function ReservePage() {
       // Clear time slots if no availability data
       setTimeSlots([])
     }
-  }, [searchParams, roomId, roomName, date])
+  }, [searchParams])
 
   // Initialize component
   useEffect(() => {
