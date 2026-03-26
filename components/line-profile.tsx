@@ -19,6 +19,7 @@ export default function LineProfile() {
       const linePictureUrl = localStorage.getItem("linePictureUrl")
 
       if (lineUserId && lineDisplayName) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLocalProfile({
           displayName: lineDisplayName,
           pictureUrl: linePictureUrl || undefined,

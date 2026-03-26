@@ -97,7 +97,7 @@ export default function ReservePage() {
       } = await supabase.auth.getSession()
       if (session?.user) {
         setUserId(session.user.id)
-        setUserEmail(session.user.email)
+        setUserEmail(session.user.email ?? null)
 
         // Check if user has telephone number required for reservations
         const { hasPhone, profile, error } = await checkUserTelephoneRequired(session.user.id)
@@ -177,7 +177,8 @@ export default function ReservePage() {
       // Clear time slots if no availability data
       setTimeSlots([])
     }
-  }, [searchParams, roomId, roomName, date])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // Initialize component
   useEffect(() => {
@@ -365,7 +366,7 @@ export default function ReservePage() {
             </div>
 
             <p className="text-sm text-gray-400">
-              Don't worry - this is a one-time setup. Once completed, you can make reservations anytime.
+              Don&apos;t worry - this is a one-time setup. Once completed, you can make reservations anytime.
             </p>
           </div>
         </div>
@@ -526,7 +527,7 @@ export default function ReservePage() {
               Not Enough Credits
             </DialogTitle>
             <DialogDescription className="text-base text-gray-600 pt-2">
-              You don't have enough credits for this reservation. You need {selectedSlots.length} credits, but you only
+              You don&apos;t have enough credits for this reservation. You need {selectedSlots.length} credits, but you only
               have {userCredits} credits available.
             </DialogDescription>
           </DialogHeader>

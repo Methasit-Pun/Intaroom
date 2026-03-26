@@ -31,8 +31,8 @@ export default function LogoutButton({ variant = "outline", className = "" }: Lo
       localStorage.removeItem("isAdmin")
       localStorage.removeItem("adminEmail")
 
-      // Clear admin cookie
-      document.cookie = "isAdmin=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+      // Clear HttpOnly admin cookie via server API
+      await fetch("/api/admin/logout", { method: "POST" })
 
       // Logout from LINE if logged in via LIFF
       if (isLiffLoggedIn) {

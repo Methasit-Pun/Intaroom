@@ -3,7 +3,7 @@
 import { useLiff } from "@/components/liff-provider"
 
 export default function TestLiff() {
-  const { isLoggedIn, liffProfile } = useLiff()
+  const { isLoggedIn, profile } = useLiff()
 
   return (
     <div style={{ padding: 32 }}>
@@ -12,8 +12,8 @@ export default function TestLiff() {
         <strong>isLoggedIn:</strong> {isLoggedIn ? "true" : "false"}
       </div>
       <div>
-        <strong>liffProfile:</strong>
-        <pre>{JSON.stringify(liffProfile, null, 2)}</pre>
+        <strong>profile:</strong>
+        <pre>{JSON.stringify(profile, null, 2)}</pre>
       </div>
     </div>
   )

@@ -79,10 +79,11 @@ export default function ProfilePage() {
         const { data: sessionData } = await supabase.auth.getSession()
         if (sessionData.session) {
           userId = sessionData.session.user.id
-          userEmail = sessionData.session.user.email
+          userEmail = sessionData.session.user.email ?? null
         }
 
         // If no Supabase session but we have LIFF profile, try to find user by LINE ID
+        let profileAlreadyLoaded = false
         if (!userId && liffProfile) {
           const { data: lineUserData, error: lineUserError } = await supabase
             .from("profiles")
@@ -94,11 +95,16 @@ export default function ProfilePage() {
             userId = lineUserData.id
             userEmail = lineUserData.email
             setProfile(lineUserData)
+            setFormData({
+              full_name: lineUserData.full_name || liffProfile.displayName || "",
+              telephone: lineUserData.telephone || "",
+            })
+            profileAlreadyLoaded = true
           }
         }
 
-        // If we have a user ID, fetch the full profile
-        if (userId) {
+        // If we have a user ID, fetch the full profile (skip if already loaded via LINE ID)
+        if (userId && !profileAlreadyLoaded) {
           const { data, error } = await supabase
             .from("profiles")
             .select("id, full_name, email, telephone, credits, username, line_user_id, avatar_url")
@@ -115,7 +121,7 @@ export default function ProfilePage() {
             full_name: data.full_name || liffProfile?.displayName || "",
             telephone: data.telephone || "",
           })
-        } else {
+        } else if (!userId) {
           // No user found, redirect to login
           router.push("/login")
           return
@@ -293,6 +299,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#5A0D16] flex items-center justify-center text-white text-2xl sm:text-3xl font-semibold overflow-hidden flex-shrink-0">
                     {profile.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={profile.avatar_url || "/placeholder.svg"}
                         alt="Profile"
@@ -369,7 +376,7 @@ export default function ProfilePage() {
                   </div>
                   {searchParams.get("required") === "telephone" && (
                     <p className="text-xs text-gray-600 ml-1">
-                      📱 Required for room reservations - we'll contact you about your bookings
+                      📱 Required for room reservations - we&apos;ll contact you about your bookings
                     </p>
                   )}
                 </div>
@@ -377,7 +384,7 @@ export default function ProfilePage() {
                 <div className="space-y-2 sm:space-y-3">
                   <label className="block text-sm font-medium text-gray-700">Email</label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                    <Mail className="absolute left-3 top-3 sm:top-4 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                     <Input value={profile.email} className="pl-10 border-gray-300 bg-gray-50 py-3 sm:py-6 text-sm sm:text-base" disabled />
                     <p className="text-xs text-gray-500 mt-1 ml-1">Email cannot be changed</p>
                   </div>

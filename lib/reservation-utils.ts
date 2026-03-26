@@ -9,7 +9,7 @@ export interface Reservation {
   date: string
   start_time: string
   end_time: string
-  status: "Pending" | "Approved" | "Rejected"
+  status: "Pending" | "Approved" | "Rejected" | "Cancelled"
   purpose: string
   confirmation_number: string
   contact_email?: string
@@ -28,7 +28,7 @@ export interface GroupedReservation {
   user_id: string
   date: string
   time_slots: { start_time: string; end_time: string }[]
-  status: "Pending" | "Approved" | "Rejected"
+  status: "Pending" | "Approved" | "Rejected" | "Cancelled"
   purpose: string
   confirmation_number: string
   contact_email?: string
@@ -57,8 +57,14 @@ export function groupReservations(
   const grouped: { [key: string]: GroupedReservation } = {}
 
   reservations.forEach((reservation) => {
-    // Extract the base confirmation number (before the dash or the whole if no dash)
-    const baseConfirmation = reservation.confirmation_number.split("-")[0]
+    // Extract the base confirmation number by stripping the trailing slot suffix (-N).
+    // Handles both formats:
+    //   new sequential: INR-00001-1 → INR-00001
+    //   old date-based: INR-2026-03-04-1 → INR-2026-03-04
+    const confMatch = reservation.confirmation_number.match(
+      /^(INR-\d{4,}(?:-\d{2}-\d{2})?)(-\d+)?$/
+    )
+    const baseConfirmation = confMatch ? confMatch[1] : reservation.confirmation_number
 
     // Create a unique key combining the confirmation base, date, room_id, AND user_id
     // This ensures we only group reservations from the same user on the same day in the same room
@@ -332,7 +338,7 @@ export async function storeQRCodeForApprovedReservation(
  */
 export async function updateReservationStatus(
   reservationIds: number[],
-  status: "Pending" | "Approved" | "Rejected",
+  status: "Pending" | "Approved" | "Rejected" | "Cancelled",
   supabaseUrl: string,
   supabaseAnonKey: string
 ): Promise<void> {

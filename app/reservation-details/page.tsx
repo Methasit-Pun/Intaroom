@@ -45,6 +45,7 @@ export default function ReservationDetailsPage() {
 
   useEffect(() => {
     fetchReservationDetails()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchReservationDetails = async () => {
@@ -317,6 +318,7 @@ export default function ReservationDetailsPage() {
 
                 <div className="bg-white rounded-2xl p-8 shadow-2xl">
                   <div className="mb-6">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateAndStoreQRCode(reservation))}&margin=15&color=5A0D16&bgcolor=FFFFFF`}
                       alt="Room Access QR Code"

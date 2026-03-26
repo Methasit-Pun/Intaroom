@@ -23,7 +23,7 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
               <h3 className="text-base font-medium mb-2">📄 เงื่อนไขการจองห้อง (Terms & Conditions)</h3>
               <ul className="space-y-2 text-sm">
                 <li>• ผู้ใช้งานต้องเข้าสู่ระบบก่อนทำการจองห้องทุกครั้ง</li>
-                <li>• การจองจะถือว่าสำเร็จเมื่อได้รับสถานะ "อนุมัติ" เท่านั้น</li>
+                <li>• การจองจะถือว่าสำเร็จเมื่อได้รับสถานะ &quot;อนุมัติ&quot; เท่านั้น</li>
                 <li>• หากไม่สามารถเข้าร่วมตามเวลาที่จอง กรุณายกเลิกล่วงหน้าอย่างน้อย 1 ชั่วโมง</li>
                 <li>• การไม่มาใช้ห้องโดยไม่แจ้งล่วงหน้าเกิน 2 ครั้ง อาจถูกระงับสิทธิ์การจองชั่วคราว</li>
                 <li>• ห้องนี้มีไว้เพื่อการศึกษา ประชุม หรือกิจกรรมที่ได้รับอนุญาตเท่านั้น</li>
@@ -46,7 +46,7 @@ export default function RulesPoliciesModal({ trigger }: RulesPoliciesModalProps)
               <h3 className="text-base font-medium mb-2">📄 Terms & Conditions</h3>
               <ul className="space-y-2 text-sm">
                 <li>• Users must log in before making any room reservations</li>
-                <li>• Reservations are only considered successful when marked as "Approved"</li>
+                <li>• Reservations are only considered successful when marked as &quot;Approved&quot;</li>
                 <li>• If unable to attend, please cancel at least 1 hour in advance</li>
                 <li>• Failing to show up without notice more than 2 times may result in temporary suspension</li>
                 <li>• This room is for educational purposes, meetings, or authorized activities only</li>

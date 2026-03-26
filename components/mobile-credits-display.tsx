@@ -44,7 +44,7 @@ export default function MobileCreditsDisplay() {
   if (loading) return null
 
   return (
-    <div className="sm:hidden fixed bottom-4 right-4 z-10 flex items-center gap-1 px-3 py-2 bg-[#6D3B3B] rounded-full shadow-lg">
+    <div className="sm:hidden fixed bottom-4 right-4 z-50 flex items-center gap-1 px-3 py-2 bg-[#6D3B3B] rounded-full shadow-lg">
       <Coins className="h-4 w-4 text-[#D4AF37]" />
       <span className="text-sm font-medium text-white">{credits}</span>
     </div>

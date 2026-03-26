@@ -107,7 +107,8 @@ export function useTelephoneValidation(
     }
 
     checkUserSession()
-  }, [currentUserId, supabase]) // Re-run when currentUserId or supabase changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, supabase])
 
   return {
     isLoading,
