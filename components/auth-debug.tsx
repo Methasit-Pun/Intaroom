@@ -64,6 +64,7 @@ export default function AuthDebug() {
     if (isVisible) {
       refreshData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, isLoggedIn, profile])
 
   if (!isVisible) {

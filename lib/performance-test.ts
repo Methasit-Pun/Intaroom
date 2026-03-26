@@ -33,7 +33,7 @@ class PerformanceTester {
   // Simulate the old inefficient approach
   async testOldApproach(options: PaginationOptions): Promise<PerformanceResult> {
     const startTime = performance.now()
-    const startMemory = performance.memory?.usedJSHeapSize || 0
+    const startMemory = (performance as any).memory?.usedJSHeapSize || 0
     this.queryCounter = 0
 
     try {
@@ -120,7 +120,7 @@ class PerformanceTester {
       const paginatedData = filtered.slice(startIndex, startIndex + options.pageSize)
 
       const endTime = performance.now()
-      const endMemory = performance.memory?.usedJSHeapSize || 0
+      const endMemory = (performance as any).memory?.usedJSHeapSize || 0
 
       return {
         method: "OLD_APPROACH",
@@ -144,7 +144,7 @@ class PerformanceTester {
   // Test the new optimized approach
   async testOptimizedApproach(options: PaginationOptions): Promise<PerformanceResult> {
     const startTime = performance.now()
-    const startMemory = performance.memory?.usedJSHeapSize || 0
+    const startMemory = (performance as any).memory?.usedJSHeapSize || 0
 
     try {
       console.log("🟢 OPTIMIZED METHOD: Using joins and server-side pagination...")
@@ -153,7 +153,7 @@ class PerformanceTester {
       const result = await fetchReservationsOptimized(options)
 
       const endTime = performance.now()
-      const endMemory = performance.memory?.usedJSHeapSize || 0
+      const endMemory = (performance as any).memory?.usedJSHeapSize || 0
 
       return {
         method: "OPTIMIZED_APPROACH",
@@ -178,7 +178,7 @@ class PerformanceTester {
   async testAnalyticsPerformance(): Promise<{ old: PerformanceResult; optimized: PerformanceResult }> {
     // Old analytics approach (client-side processing)
     const oldAnalyticsStart = performance.now()
-    const oldAnalyticsMemoryStart = performance.memory?.usedJSHeapSize || 0
+    const oldAnalyticsMemoryStart = (performance as any).memory?.usedJSHeapSize || 0
     
     try {
       const supabase = createClientComponentClient({
@@ -223,7 +223,7 @@ class PerformanceTester {
       }
 
       const oldAnalyticsEnd = performance.now()
-      const oldAnalyticsMemoryEnd = performance.memory?.usedJSHeapSize || 0
+      const oldAnalyticsMemoryEnd = (performance as any).memory?.usedJSHeapSize || 0
 
       const oldResult = {
         method: "OLD_ANALYTICS",
@@ -235,12 +235,12 @@ class PerformanceTester {
 
       // New optimized analytics approach
       const optimizedAnalyticsStart = performance.now()
-      const optimizedAnalyticsMemoryStart = performance.memory?.usedJSHeapSize || 0
+      const optimizedAnalyticsMemoryStart = (performance as any).memory?.usedJSHeapSize || 0
 
       await fetchAnalyticsOptimized('week')
 
       const optimizedAnalyticsEnd = performance.now()
-      const optimizedAnalyticsMemoryEnd = performance.memory?.usedJSHeapSize || 0
+      const optimizedAnalyticsMemoryEnd = (performance as any).memory?.usedJSHeapSize || 0
 
       const optimizedResult = {
         method: "OPTIMIZED_ANALYTICS",

@@ -79,7 +79,7 @@ export default function ProfilePage() {
         const { data: sessionData } = await supabase.auth.getSession()
         if (sessionData.session) {
           userId = sessionData.session.user.id
-          userEmail = sessionData.session.user.email
+          userEmail = sessionData.session.user.email ?? null
         }
 
         // If no Supabase session but we have LIFF profile, try to find user by LINE ID
@@ -299,6 +299,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#5A0D16] flex items-center justify-center text-white text-2xl sm:text-3xl font-semibold overflow-hidden flex-shrink-0">
                     {profile.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={profile.avatar_url || "/placeholder.svg"}
                         alt="Profile"
@@ -375,7 +376,7 @@ export default function ProfilePage() {
                   </div>
                   {searchParams.get("required") === "telephone" && (
                     <p className="text-xs text-gray-600 ml-1">
-                      📱 Required for room reservations - we'll contact you about your bookings
+                      📱 Required for room reservations - we&apos;ll contact you about your bookings
                     </p>
                   )}
                 </div>

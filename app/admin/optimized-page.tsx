@@ -249,6 +249,7 @@ export default function OptimizedAdminPage() {
     if (currentPage > 1) {
       setCurrentPage(1)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, statusFilter, pageSize])
 
   // Handle page change

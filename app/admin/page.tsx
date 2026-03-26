@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   Search,
@@ -107,46 +107,13 @@ export default function AdminPage() {
   const [analyticsTimeFrame, setAnalyticsTimeFrame] = useState<"day" | "week" | "month">("week")
 
   // Initialize Supabase client
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
-
-  // Check if user is authenticated as admin
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check if admin is logged in via localStorage
-        const isAdmin = localStorage.getItem("isAdmin") === "true"
-
-        if (!isAdmin) {
-          // If not admin, redirect to login
-          router.push("/login")
-          return
-        }
-
-        // If admin, fetch reservations and users
-        fetchReservations()
-        fetchUsers()
-      } catch (error) {
-        console.error("Auth check error:", error)
-      }
-    }
-
-    checkAuth()
-  }, [router])
-
-
-  // Group reservations by confirmation number base AND date AND room
-  useEffect(() => {
-    if (reservations.length > 0) {
-      const grouped = groupReservations(reservations, sortDirection)
-      setGroupedReservations(grouped)
-    }
-  }, [reservations, sortDirection])
+  const supabase = useMemo(
+    () => createClientComponentClient({ supabaseUrl, supabaseKey: supabaseAnonKey }),
+    []
+  )
 
   // Fetch reservations from Supabase
-  const fetchReservations = async () => {
+  const fetchReservations = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -192,10 +159,10 @@ export default function AdminPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
   // Fetch users from Supabase
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("*")
 
@@ -208,7 +175,41 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Error fetching users:", error)
     }
-  }
+  }, [supabase])
+
+  // Check if user is authenticated as admin
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check if admin is logged in via localStorage
+        const isAdmin = localStorage.getItem("isAdmin") === "true"
+
+        if (!isAdmin) {
+          // If not admin, redirect to login
+          router.push("/login")
+          return
+        }
+
+        // If admin, fetch reservations and users
+        fetchReservations()
+        fetchUsers()
+      } catch (error) {
+        console.error("Auth check error:", error)
+      }
+    }
+     
+
+    checkAuth()
+  }, [router, fetchReservations, fetchUsers])
+
+
+  // Group reservations by confirmation number base AND date AND room
+  useEffect(() => {
+    if (reservations.length > 0) {
+      const grouped = groupReservations(reservations, sortDirection)
+      setGroupedReservations(grouped)
+    }
+  }, [reservations, sortDirection])
 
   // Derive analytics data directly — no extra render cycle needed
   const analyticsData = useMemo(() => {

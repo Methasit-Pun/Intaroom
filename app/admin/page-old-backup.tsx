@@ -153,6 +153,7 @@ export default function AdminPage() {
     if (reservations.length > 0) {
       generateAnalytics()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservations, analyticsTimeFrame])
 
   // Group reservations by confirmation number base AND date AND room

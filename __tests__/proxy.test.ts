@@ -22,6 +22,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
   makeMockRequest,
+  MockNextResponse,
 } from "./setup"
 import type { MockedFunction } from "vitest"
 import type { getAdminSession as GetAdminSessionType } from "@/lib/admin-auth"
@@ -40,7 +41,7 @@ beforeEach(async () => {
   mockGetAdminSession = vi.mocked(adminAuth.getAdminSession)
 
   const helpers = await import("@supabase/auth-helpers-nextjs")
-  mockCreateMiddlewareClient = helpers.createMiddlewareClient as typeof mockCreateMiddlewareClient
+  mockCreateMiddlewareClient = helpers.createMiddlewareClient as unknown as typeof mockCreateMiddlewareClient
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
