@@ -110,6 +110,7 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
     }
 
     initLiff()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liffId])
 
   // Handle Supabase authentication

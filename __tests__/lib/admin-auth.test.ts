@@ -61,7 +61,7 @@ describe("getAdminSession()", () => {
 
   beforeEach(async () => {
     const helpers = await import("@supabase/auth-helpers-nextjs")
-    mockCreateMiddlewareClient = helpers.createMiddlewareClient as typeof mockCreateMiddlewareClient
+    mockCreateMiddlewareClient = helpers.createMiddlewareClient as unknown as typeof mockCreateMiddlewareClient
   })
 
   it("returns { isAdmin: true } when session exists and role is 'admin'", async () => {
@@ -143,7 +143,7 @@ describe("requireAdmin()", () => {
   beforeEach(async () => {
     const helpers = await import("@supabase/auth-helpers-nextjs")
     mockCreateServerComponentClient =
-      helpers.createServerComponentClient as typeof mockCreateServerComponentClient
+      helpers.createServerComponentClient as unknown as typeof mockCreateServerComponentClient
   })
 
   it("returns { userId } when session exists and role is 'admin'", async () => {

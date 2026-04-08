@@ -112,7 +112,8 @@ export default function LoginPage() {
       isMounted = false;
       clearTimeout(timeoutId)
     }
-  }, []) // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -126,7 +127,7 @@ export default function LoginPage() {
       setLoading(false)
       setError("Login is taking too long. Please try again.")
       console.error("⏰ Login timeout reached")
-    }, 20000) // 20 seconds timeout
+    }, 30000) // 30 seconds timeout
 
     try {
       if (userType === "admin") {

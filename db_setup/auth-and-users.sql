@@ -112,11 +112,14 @@ CREATE POLICY "rooms_admin_full_access" ON rooms
 -- ============================================
 
 -- Insert the default admin user into admin_profiles
-INSERT INTO public.admin_profiles (email, password, full_name)
-VALUES ('admin1', 'admin123', 'Admin User')
-ON CONFLICT (email)
+-- password_hash is SHA-256 of the plaintext password.
+-- To generate a hash for a new password run:
+--   node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('YOUR_PASSWORD').digest('hex'))"
+INSERT INTO public.admin_profiles (id, email, username, password_hash, full_name)
+VALUES (gen_random_uuid(), 'admin1@admin.local', 'admin1', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Admin User')
+ON CONFLICT (username)
 DO UPDATE SET
-  password = 'admin123',
+  password_hash = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
   full_name = 'Admin User',
   updated_at = NOW();
 

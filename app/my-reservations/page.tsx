@@ -56,6 +56,7 @@ export default function MyReservationsPage() {
 
   useEffect(() => {
     fetchReservations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Group reservations by confirmation number base AND date AND room

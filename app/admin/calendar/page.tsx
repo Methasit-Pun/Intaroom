@@ -1,20 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
+export const dynamic = "force-dynamic"
+
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Calendar,
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
-  Clock,
-  User,
-  Home,
   Loader2,
   Filter,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
@@ -77,8 +75,13 @@ export default function AdminCalendarPage() {
   const [selectedRoom, setSelectedRoom] = useState<number | "all">("all")
   const [reservations, setReservations] = useState<AdminCalendarReservation[]>([])
   const [monthReservations, setMonthReservations] = useState<AdminCalendarReservation[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [isFetching, setIsFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Cache: key = `${dateStr}-${roomId}` for daily, `${year}-${month}-${roomId}` for monthly
+  const dailyCacheRef = useRef<Map<string, AdminCalendarReservation[]>>(new Map())
+  const monthCacheRef = useRef<Map<string, AdminCalendarReservation[]>>(new Map())
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -121,14 +124,17 @@ export default function AdminCalendarPage() {
 
   // Fetch reservations for the entire month to show status dots
   const fetchMonthReservations = async (date: Date, roomId: number | "all") => {
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}-${roomId}`
+    if (monthCacheRef.current.has(monthKey)) {
+      setMonthReservations(monthCacheRef.current.get(monthKey)!)
+      return
+    }
+
     try {
       const firstDay = new Date(date.getFullYear(), date.getMonth(), 1)
       const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-      
       const startDate = formatDateForDatabase(firstDay)
       const endDate = formatDateForDatabase(lastDay)
-      
-      console.log(`Fetching month reservations from ${startDate} to ${endDate}, room: ${roomId}`)
 
       let query = supabase
         .from("reservations")
@@ -150,7 +156,7 @@ export default function AdminCalendarPage() {
         return
       }
 
-      console.log(`Found ${data?.length || 0} month reservations:`, data)
+      monthCacheRef.current.set(monthKey, data || [])
       setMonthReservations(data || [])
     } catch (error) {
       console.error("Error in fetchMonthReservations:", error)
@@ -169,13 +175,25 @@ export default function AdminCalendarPage() {
 
   // Fetch all reservations for the selected date
   const fetchReservations = async (date: Date, roomId: number | "all") => {
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const dateStr = formatDateForDatabase(date)
-      console.log(`Fetching reservations for date ${dateStr}, room: ${roomId}`)
+    const dateStr = formatDateForDatabase(date)
+    const cacheKey = `${dateStr}-${roomId}`
 
+    // Serve from cache instantly — no spinner
+    if (dailyCacheRef.current.has(cacheKey)) {
+      setReservations(dailyCacheRef.current.get(cacheKey)!)
+      setLoading(false)
+      return
+    }
+
+    // First load shows full spinner; subsequent uncached dates show subtle overlay
+    if (reservations.length === 0) {
+      setLoading(true)
+    } else {
+      setIsFetching(true)
+    }
+    setError(null)
+
+    try {
       let query = supabase
         .from("reservations")
         .select("*")
@@ -216,7 +234,7 @@ export default function AdminCalendarPage() {
         }
       })
 
-      console.log(`Found ${enhancedReservations.length} reservations:`, enhancedReservations)
+      dailyCacheRef.current.set(cacheKey, enhancedReservations)
       setReservations(enhancedReservations)
     } catch (error) {
       console.error("Error in fetchReservations:", error)
@@ -224,13 +242,21 @@ export default function AdminCalendarPage() {
       setReservations([])
     } finally {
       setLoading(false)
+      setIsFetching(false)
     }
   }
+
+  // Clear caches when room filter changes so stale data isn't served
+  useEffect(() => {
+    dailyCacheRef.current.clear()
+    monthCacheRef.current.clear()
+  }, [selectedRoom])
 
   // Effect to fetch reservations when date or room changes
   useEffect(() => {
     fetchReservations(selectedDate, selectedRoom)
     fetchMonthReservations(selectedDate, selectedRoom)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, selectedRoom])
 
   // Navigate to previous day
@@ -365,8 +391,8 @@ export default function AdminCalendarPage() {
         ) : error ? (
           <div className="text-center text-red-400 py-8">
             <p>{error}</p>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => fetchReservations(selectedDate, selectedRoom)}
               className="mt-4 bg-white text-black border-white hover:bg-gray-100"
             >
@@ -374,7 +400,12 @@ export default function AdminCalendarPage() {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-180px)]">
+          <div className={cn("flex flex-col lg:flex-row gap-6 h-[calc(100vh-180px)] relative transition-opacity duration-150", isFetching && "opacity-60 pointer-events-none")}>
+            {isFetching && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <Loader2 className="h-8 w-8 animate-spin text-[#D4AF37]" />
+              </div>
+            )}
             {/* Left Column - Calendar View and Room Filter */}
             <div className="w-full lg:w-1/3 space-y-4 overflow-hidden">
               {/* Calendar Month View */}
@@ -456,18 +487,9 @@ export default function AdminCalendarPage() {
                               : "text-gray-400 hover:bg-gray-100",
                             day && "hover:shadow-md",
                           )}
-                          disabled={!day || loading}
+                          disabled={!day || isFetching}
                           onClick={() => {
-                            if (day) {
-                              console.log("Admin selected date:", day.toDateString())
-                              setSelectedDate(day)
-                              // Show loading state immediately
-                              setLoading(true)
-                              // Fetch reservations with a small delay to show loading
-                              setTimeout(() => {
-                                fetchReservations(day, selectedRoom)
-                              }, 100)
-                            }
+                            if (day) setSelectedDate(day)
                           }}
                         >
                           {day ? day.getDate() : ""}
@@ -596,11 +618,12 @@ export default function AdminCalendarPage() {
                                     ) : (
                                       <div className="relative h-full">
                                         {slotReservations.map((reservation, index) => {
-                                          const statusStyles = {
+                                          const statusStyles = ({
                                             "Approved": "bg-green-500 text-white border-green-600",
-                                            "Pending": "bg-red-500 text-white border-red-600", 
-                                            "Rejected": "bg-gray-800 text-white border-gray-900"
-                                          }[reservation.status]
+                                            "Pending": "bg-red-500 text-white border-red-600",
+                                            "Rejected": "bg-gray-800 text-white border-gray-900",
+                                            "Cancelled": "bg-gray-400 text-white border-gray-500",
+                                          } as Record<string, string>)[reservation.status] ?? "bg-gray-400 text-white border-gray-500"
 
                                           // Create overlapping block effect with proper z-index below headers
                                           const offsetX = index * 8 // Smaller horizontal offset

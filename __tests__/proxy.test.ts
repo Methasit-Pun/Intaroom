@@ -22,6 +22,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
   makeMockRequest,
+  MockNextResponse,
 } from "./setup"
 import type { MockedFunction } from "vitest"
 import type { getAdminSession as GetAdminSessionType } from "@/lib/admin-auth"
@@ -40,7 +41,7 @@ beforeEach(async () => {
   mockGetAdminSession = vi.mocked(adminAuth.getAdminSession)
 
   const helpers = await import("@supabase/auth-helpers-nextjs")
-  mockCreateMiddlewareClient = helpers.createMiddlewareClient as typeof mockCreateMiddlewareClient
+  mockCreateMiddlewareClient = helpers.createMiddlewareClient as unknown as typeof mockCreateMiddlewareClient
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ describe("proxy middleware", () => {
       "/logo.png",
       "/robots.txt",
     ])("passes '%s' through without touching Supabase or admin session", async (pathname) => {
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest(pathname) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -85,7 +86,7 @@ describe("proxy middleware", () => {
 
   describe("admin routes — isAdmin cookie (the fixed behaviour)", () => {
     it("allows /admin when isAdmin cookie is 'true' WITHOUT calling getAdminSession", async () => {
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin", { cookies: { isAdmin: "true" } }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -96,7 +97,7 @@ describe("proxy middleware", () => {
     })
 
     it("allows /admin/calendar when isAdmin cookie is 'true'", async () => {
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin/calendar", { cookies: { isAdmin: "true" } }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -106,7 +107,7 @@ describe("proxy middleware", () => {
 
     it("does NOT allow access when isAdmin cookie is 'false'", async () => {
       stubAdminSession(false)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin", { cookies: { isAdmin: "false" } }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -117,7 +118,7 @@ describe("proxy middleware", () => {
 
     it("does NOT allow access when isAdmin cookie is absent", async () => {
       stubAdminSession(false)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin", { cookies: {} }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -132,7 +133,7 @@ describe("proxy middleware", () => {
   describe("admin routes — Supabase session fallback", () => {
     it("allows /admin when no cookie but getAdminSession returns isAdmin=true", async () => {
       stubAdminSession(true)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin", { cookies: {} }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -143,7 +144,7 @@ describe("proxy middleware", () => {
 
     it("redirects to /login when no cookie and getAdminSession returns isAdmin=false", async () => {
       stubAdminSession(false)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/admin", { cookies: {} }) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -165,7 +166,7 @@ describe("proxy middleware", () => {
       "/register-success",
       "/reset-password",
     ])("allows '%s' without any session", async (pathname) => {
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest(pathname) as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -183,7 +184,7 @@ describe("proxy middleware", () => {
 
     it("allows access when a valid Supabase session exists", async () => {
       stubUserSession(fakeSession)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/my-reservations") as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -193,7 +194,7 @@ describe("proxy middleware", () => {
 
     it("allows access to the root '/' with a valid session", async () => {
       stubUserSession(fakeSession)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/") as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -203,7 +204,7 @@ describe("proxy middleware", () => {
 
     it("redirects to /login when no session exists", async () => {
       stubUserSession(null)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/my-reservations") as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse
@@ -215,7 +216,7 @@ describe("proxy middleware", () => {
 
     it("includes redirectedFrom param when redirecting unauthenticated user", async () => {
       stubUserSession(null)
-      const { proxy } = await import("@/proxy")
+      const { proxy } = await import("@/lib/proxy")
       const req = makeMockRequest("/summary") as any
 
       const res = (await proxy(req)) as unknown as MockNextResponse

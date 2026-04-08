@@ -42,6 +42,7 @@ export function PerformanceMonitor({ className }: PerformanceMonitorProps) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateStats()
     
     // Auto-refresh stats every 5 seconds

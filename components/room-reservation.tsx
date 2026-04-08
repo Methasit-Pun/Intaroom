@@ -86,7 +86,7 @@ export default function RoomReservation() {
   const [error, setError] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
-  const { isLoggedIn: isLiffLoggedIn, liffProfile } = useLiff()
+  const { isLoggedIn: isLiffLoggedIn, profile } = useLiff()
 
   // Initialize Supabase client
   const supabase = createClientComponentClient({
@@ -145,12 +145,17 @@ export default function RoomReservation() {
             }
           }
           // If logged in via LIFF, try to fetch by LINE user ID
-          else if (isLiffLoggedIn && liffProfile) {
+          else if (isLiffLoggedIn && profile) {
             try {
               const { data: lineUserData, error: lineUserError } = await supabase
                 .from("profiles")
+<<<<<<< HEAD
                 .select("id, credits")
                 .eq("line_user_id", liffProfile.userId)
+=======
+                .select("credits")
+                .eq("line_user_id", profile.userId)
+>>>>>>> d098161a328745ba35a4200bf2abbad74f89b8f1
                 .single()
 
               if (!lineUserError && lineUserData) {
@@ -174,11 +179,12 @@ export default function RoomReservation() {
     }
 
     checkSession()
-  }, [supabase, isLiffLoggedIn, liffProfile])
+  }, [supabase, isLiffLoggedIn, profile])
 
   // Fetch reservations when date or room changes
   useEffect(() => {
     fetchReservations(staticRooms[currentRoomIndex]?.id, selectedDate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, currentRoomIndex])
 
   // Function to format date as YYYY-MM-DD in local timezone
@@ -250,6 +256,7 @@ export default function RoomReservation() {
     return dates
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const weekDates = useMemo(() => getWeekDates(), [selectedDate])
 
   // Format date range for display

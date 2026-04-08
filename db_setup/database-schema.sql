@@ -90,12 +90,14 @@ CREATE TABLE IF NOT EXISTS reservations (
 
 -- Create admin_profiles table for direct admin authentication
 CREATE TABLE IF NOT EXISTS public.admin_profiles (
-  id SERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
   full_name TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  email_verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );
 
 -- ============================================
