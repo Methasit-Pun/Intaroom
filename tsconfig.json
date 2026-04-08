@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
+    "prisma.config.ts",
     "components/theme-provider.tsx",
     "components/ui/accordion.tsx",
     "components/ui/alert-dialog.tsx",

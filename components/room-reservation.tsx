@@ -149,13 +149,8 @@ export default function RoomReservation() {
             try {
               const { data: lineUserData, error: lineUserError } = await supabase
                 .from("profiles")
-<<<<<<< HEAD
                 .select("id, credits")
-                .eq("line_user_id", liffProfile.userId)
-=======
-                .select("credits")
                 .eq("line_user_id", profile.userId)
->>>>>>> d098161a328745ba35a4200bf2abbad74f89b8f1
                 .single()
 
               if (!lineUserError && lineUserData) {
