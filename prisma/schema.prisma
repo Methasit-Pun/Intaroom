@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// PROFILES TABLE
+// ============================================
+// Note: In Supabase, profiles.id references auth.users(id).
+// Prisma cannot manage the auth schema, so we define id as a plain UUID PK.
+// The FK relationship is maintained at the database level via Supabase triggers.
+
+model Profile {
+  id             String    @id @db.Uuid
+  full_name      String?
+  email          String
+  role           String    @default("user")
+  email_verified Boolean   @default(false)
+  username       String?   @unique
+  telephone      String?
+  line_user_id   String?   @unique
+  avatar_url     String?
+  credits        Int       @default(100)
+  is_banned      Boolean   @default(false)
+  ban_reason     String?
+  ban_until      DateTime? @db.Timestamptz
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  reservations Reservation[]
+
+  @@map("profiles")
+}
+
+// ============================================
+// ROOMS TABLE
+// ============================================
+
+model Room {
+  id          Int      @id @default(autoincrement())
+  name        String
+  capacity    Int
+  description String?
+  image_url   String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  reservations          Reservation[]
+  room_features_junction RoomFeaturesJunction[]
+
+  @@map("rooms")
+}
+
+// ============================================
+// ROOM FEATURES TABLE
+// ============================================
+
+model RoomFeature {
+  id         Int      @id @default(autoincrement())
+  name       String
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  room_features_junction RoomFeaturesJunction[]
+
+  @@map("room_features")
+}
+
+// ============================================
+// ROOM FEATURES JUNCTION TABLE
+// ============================================
+
+model RoomFeaturesJunction {
+  room_id    Int
+  feature_id Int
+
+  room    Room        @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  feature RoomFeature @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+
+  @@id([room_id, feature_id])
+  @@map("room_features_junction")
+}
+
+// ============================================
+// RESERVATIONS TABLE
+// ============================================
+
+model Reservation {
+  id               Int      @id @default(autoincrement())
+  booking_name     String
+  room_id          Int
+  user_id          String   @db.Uuid
+  date             DateTime @db.Date
+  start_time       DateTime @db.Time()
+  end_time         DateTime @db.Time()
+  status           String   @default("Pending")
+  purpose          String?
+  attendees        Int?
+  contact_email    String?
+  contact_phone    String?
+  special_requests String?
+  equipment_needed String?
+  qr_code_url      String?
+  admin_notes      String?
+  rejection_reason String?
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  room Room    @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("reservations")
+}
+
+// ============================================
+// ADMIN PROFILES TABLE (Direct Admin Auth)
+// ============================================
+
+model AdminProfile {
+  id             String   @id @default(uuid()) @db.Uuid
+  email          String   @unique
+  username       String   @unique
+  password_hash  String
+  full_name      String?
+  email_verified Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+
+  @@map("admin_profiles")
+}
