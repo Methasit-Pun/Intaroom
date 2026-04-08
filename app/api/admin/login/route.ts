@@ -1,5 +1,3 @@
-import { createClient } from "@supabase/supabase-js"
-import { createHash } from "crypto"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
@@ -10,39 +8,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Username and password are required" }, { status: 400 })
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const adminUsername = process.env.ADMIN_USERNAME
+    const adminPassword = process.env.ADMIN_PASSWORD
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error("Missing Supabase configuration for admin login")
+    if (!adminUsername || !adminPassword) {
+      console.error("Missing admin credentials configuration")
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
     }
 
-    // Use service role key so this route can read admin_profiles regardless of RLS
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    })
-
-    // Look up the admin record by username
-    const { data: admin, error } = await supabase
-      .from("admin_profiles")
-      .select("id, username, password_hash")
-      .eq("username", username)
-      .single()
-
-    if (error || !admin) {
-      // Return the same error message regardless of whether the user exists
-      // to prevent username enumeration
-      return NextResponse.json({ error: "Invalid admin credentials" }, { status: 401 })
-    }
-
-    // Compare SHA-256 hash of the incoming password against the stored hash.
-    // To generate a hash for a new admin password run:
-    //   node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('YOUR_PASSWORD').digest('hex'))"
-    // then store that hex string in admin_profiles.password_hash
-    const passwordHash = createHash("sha256").update(password).digest("hex")
-
-    if (passwordHash !== admin.password_hash) {
+    if (username !== adminUsername || password !== adminPassword) {
       return NextResponse.json({ error: "Invalid admin credentials" }, { status: 401 })
     }
 
