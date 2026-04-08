@@ -10,7 +10,7 @@ import { ArrowLeft, User, Phone, Mail, Coins, Save, Loader2, AlertCircle, CheckC
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { useLiff } from "@/components/liff-provider"
-import { validateTelephoneNumber } from "@/lib/user-validation"
+import { resetMonthlyCreditsIfBelowMinimum, validateTelephoneNumber } from "@/lib/user-validation"
 
 interface ProfileData {
   id: string
@@ -79,7 +79,7 @@ export default function ProfilePage() {
         const { data: sessionData } = await supabase.auth.getSession()
         if (sessionData.session) {
           userId = sessionData.session.user.id
-          userEmail = sessionData.session.user.email
+          userEmail = sessionData.session.user.email || null
         }
 
         // If no Supabase session but we have LIFF profile, try to find user by LINE ID
@@ -94,7 +94,13 @@ export default function ProfilePage() {
           if (!lineUserError && lineUserData) {
             userId = lineUserData.id
             userEmail = lineUserData.email
-            setProfile(lineUserData)
+
+            const credits = await resetMonthlyCreditsIfBelowMinimum(lineUserData.id, lineUserData.credits || 0)
+
+            setProfile({
+              ...lineUserData,
+              credits,
+            })
             setFormData({
               full_name: lineUserData.full_name || liffProfile.displayName || "",
               telephone: lineUserData.telephone || "",
@@ -116,7 +122,12 @@ export default function ProfilePage() {
             throw error
           }
 
-          setProfile(data)
+          const credits = await resetMonthlyCreditsIfBelowMinimum(data.id, data.credits || 0)
+
+          setProfile({
+            ...data,
+            credits,
+          })
           setFormData({
             full_name: data.full_name || liffProfile?.displayName || "",
             telephone: data.telephone || "",

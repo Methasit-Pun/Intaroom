@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { resetMonthlyCreditsIfBelowMinimum } from "@/lib/user-validation"
 import LogoutButton from "@/components/logout-button"
 import LineProfile from "@/components/line-profile"
 import { useLiff } from "@/components/liff-provider"
@@ -129,7 +130,11 @@ export default function RoomReservation() {
 
               if (!profileError && profileData) {
                 console.log("User profile loaded:", profileData)
-                setUserCredits(profileData.credits || 100)
+                const credits = await resetMonthlyCreditsIfBelowMinimum(
+                  data.session.user.id,
+                  profileData.credits || 0,
+                )
+                setUserCredits(credits)
               } else {
                 console.error("Profile fetch error:", profileError)
                 setUserCredits(100)
@@ -144,12 +149,16 @@ export default function RoomReservation() {
             try {
               const { data: lineUserData, error: lineUserError } = await supabase
                 .from("profiles")
-                .select("credits")
+                .select("id, credits")
                 .eq("line_user_id", liffProfile.userId)
                 .single()
 
               if (!lineUserError && lineUserData) {
-                setUserCredits(lineUserData.credits || 100)
+                const credits = await resetMonthlyCreditsIfBelowMinimum(
+                  lineUserData.id,
+                  lineUserData.credits || 0,
+                )
+                setUserCredits(credits)
               } else {
                 setUserCredits(100)
               }

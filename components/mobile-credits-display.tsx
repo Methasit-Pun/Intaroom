@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Coins } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
+import { resetMonthlyCreditsIfBelowMinimum } from "@/lib/user-validation"
 
 export default function MobileCreditsDisplay() {
   const [credits, setCredits] = useState(0)
@@ -28,7 +29,11 @@ export default function MobileCreditsDisplay() {
             .single()
 
           if (data) {
-            setCredits(data.credits || 0)
+            const credits = await resetMonthlyCreditsIfBelowMinimum(
+              sessionData.session.user.id,
+              data.credits || 0,
+            )
+            setCredits(credits)
           }
         }
       } catch (error) {

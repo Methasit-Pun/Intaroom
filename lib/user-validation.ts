@@ -15,6 +15,40 @@ export interface UserProfile {
 }
 
 /**
+ * Reset credits to a minimum value on the first day of the month.
+ * If the user already has 3 or more credits, do nothing.
+ */
+export async function resetMonthlyCreditsIfBelowMinimum(
+  userId: string,
+  currentCredits: number,
+  minimumCredits = 3,
+): Promise<number> {
+  const today = new Date()
+
+  if (today.getDate() !== 1) return currentCredits
+  if (currentCredits >= minimumCredits) return currentCredits
+
+  const supabase = createClientComponentClient({
+    supabaseUrl,
+    supabaseKey: supabaseAnonKey,
+  })
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ credits: minimumCredits })
+    .eq("id", userId)
+    .select("credits")
+    .single()
+
+  if (error || !data) {
+    console.error("Error resetting monthly credits:", error)
+    return currentCredits
+  }
+
+  return data.credits ?? minimumCredits
+}
+
+/**
  * Check if user has completed required profile information (telephone number)
  * @param userId - The user ID to check
  * @returns Promise<{hasPhone: boolean, profile: UserProfile | null, error: string | null}>
