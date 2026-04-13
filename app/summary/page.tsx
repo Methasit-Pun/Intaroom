@@ -390,9 +390,9 @@ export default function SummaryPage() {
 
       // Navigate back to the home page
       router.push("/")
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error confirming reservation:", error)
-      setError(error.message || "Failed to confirm reservation")
+      setError(error instanceof Error ? error.message : "Failed to confirm reservation")
     } finally {
       setLoading(false)
     }
@@ -420,9 +420,9 @@ export default function SummaryPage() {
       if (error) throw error
 
       router.push("/")
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error canceling reservation:", error)
-      setError(error.message || "Failed to cancel reservation")
+      setError(error instanceof Error ? error.message : "Failed to cancel reservation")
     } finally {
       setLoading(false)
     }

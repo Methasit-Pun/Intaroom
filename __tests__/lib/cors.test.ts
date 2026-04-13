@@ -147,14 +147,24 @@ describe("lib/cors", () => {
       expect(corsHeaders["Access-Control-Allow-Origin"]).toBe("*")
     })
 
-    it("uses the hardcoded production URL when NODE_ENV=production and no env override", async () => {
+    it("uses NEXT_PUBLIC_APP_URL in production when ALLOWED_ORIGIN env var is not set", async () => {
       vi.stubEnv("NODE_ENV", "production")
+      vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://intaroomv2.vercel.app")
       delete process.env.ALLOWED_ORIGIN
       const { corsHeaders } = await importCors()
 
       expect(corsHeaders["Access-Control-Allow-Origin"]).toBe(
         "https://intaroomv2.vercel.app"
       )
+    })
+
+    it("falls back to '*' in production when neither ALLOWED_ORIGIN nor NEXT_PUBLIC_APP_URL is set", async () => {
+      vi.stubEnv("NODE_ENV", "production")
+      delete process.env.ALLOWED_ORIGIN
+      delete process.env.NEXT_PUBLIC_APP_URL
+      const { corsHeaders } = await importCors()
+
+      expect(corsHeaders["Access-Control-Allow-Origin"]).toBe("*")
     })
 
     it("uses ALLOWED_ORIGIN env var value when explicitly set", async () => {

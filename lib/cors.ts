@@ -20,7 +20,9 @@ import { NextResponse } from "next/server"
 
 const ALLOWED_ORIGIN =
   process.env.ALLOWED_ORIGIN ??
-  (process.env.NODE_ENV === "production" ? "https://intaroomv2.vercel.app" : "*")
+  (process.env.NODE_ENV === "production"
+    ? (process.env.NEXT_PUBLIC_APP_URL ?? "*")
+    : "*")
 
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin":      ALLOWED_ORIGIN,

@@ -48,12 +48,16 @@ export default function LoginPage() {
       try {
         console.log("🔍 Checking authentication state...")
 
-        // Check admin login first (highest priority)
-        // Middleware will verify the HttpOnly cookie — if it's expired, /admin redirects back here
-        if (localStorage.getItem("isAdmin") === "true") {
-          console.log("👑 Admin localStorage found, redirecting to admin panel")
-          if (isMounted) router.push("/admin")
-          return
+        // Check admin login first (highest priority) via the HttpOnly cookie.
+        try {
+          const adminRes = await fetch("/api/admin/verify")
+          if (adminRes.ok) {
+            console.log("👑 Admin session found, redirecting to admin panel")
+            if (isMounted) router.push("/admin")
+            return
+          }
+        } catch {
+          // No admin session — continue with regular auth checks
         }
 
         // Check LINE login
@@ -142,9 +146,6 @@ export default function LoginPage() {
           throw new Error("Invalid admin credentials")
         }
 
-        // Store only non-sensitive UI state in localStorage
-        localStorage.setItem("adminEmail", username)
-        localStorage.setItem("isAdmin", "true")
         console.log("✅ Admin login successful, redirecting...")
         router.push("/admin")
         return
@@ -248,10 +249,10 @@ export default function LoginPage() {
         router.push("/")
         return
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ Overall login error:", error)
       clearTimeout(loginTimeout) // Clear timeout on error too
-      setError(error.message || "Failed to login. Please try again.")
+      setError(error instanceof Error ? error.message : "Failed to login. Please try again.")
     } finally {
       setLoading(false)
       console.log("🏁 Login attempt completed")

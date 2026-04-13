@@ -126,9 +126,9 @@ export default function ProfilePage() {
           router.push("/login")
           return
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error fetching profile:", error)
-        setError(error.message || "Failed to load profile")
+        setError(error instanceof Error ? error.message : "Failed to load profile")
       } finally {
         setLoading(false)
       }
@@ -218,9 +218,9 @@ export default function ProfilePage() {
           setSuccess(false)
         }, 3000)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error updating profile:", error)
-      setError(error.message || "Failed to update profile")
+      setError(error instanceof Error ? error.message : "Failed to update profile")
     } finally {
       setSaving(false)
     }

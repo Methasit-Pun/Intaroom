@@ -58,8 +58,8 @@ export default function ResetPasswordPage() {
       setTimeout(() => {
         router.push("/login")
       }, 3000)
-    } catch (error: any) {
-      setError(error.message || "Failed to reset password")
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to reset password")
     } finally {
       setLoading(false)
     }

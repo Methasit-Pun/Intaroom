@@ -169,9 +169,9 @@ export default function MyReservationsPage() {
       }))
 
       setReservations(reservationsWithRoomNames)
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error fetching reservations:", error)
-      setError(error.message || "Failed to load your reservations")
+      setError(error instanceof Error ? error.message : "Failed to load your reservations")
     } finally {
       setLoading(false)
     }

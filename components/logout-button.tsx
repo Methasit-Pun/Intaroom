@@ -27,10 +27,6 @@ export default function LogoutButton({ variant = "outline", className = "" }: Lo
   const handleLogout = async () => {
     setLoading(true)
     try {
-      // Clear admin-related localStorage items
-      localStorage.removeItem("isAdmin")
-      localStorage.removeItem("adminEmail")
-
       // Clear HttpOnly admin cookie via server API
       await fetch("/api/admin/logout", { method: "POST" })
 

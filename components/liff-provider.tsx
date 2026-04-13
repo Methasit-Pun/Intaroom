@@ -3,17 +3,26 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
+import type { Liff } from "@line/liff"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 
-// Define the LIFF type
+// LINE profile shape returned by liff.getProfile()
+interface LiffProfile {
+  userId: string
+  displayName: string
+  pictureUrl?: string
+  statusMessage?: string
+}
+
+// Extend Window with properly typed liff instance
 declare global {
   interface Window {
-    liff: any
+    liff: Liff
   }
 }
 
 type LiffContextType = {
-  liff: any
+  liff: Liff | null
   isLoggedIn: boolean
   profile: {
     userId: string
@@ -48,7 +57,7 @@ type LiffProviderProps = {
 
 export function LiffProvider({ children, liffId }: LiffProviderProps) {
   const router = useRouter()
-  const [liff, setLiff] = useState<any>(null)
+  const [liff, setLiff] = useState<Liff | null>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [profile, setProfile] = useState<LiffContextType["profile"]>(null)
@@ -114,7 +123,7 @@ export function LiffProvider({ children, liffId }: LiffProviderProps) {
   }, [liffId])
 
   // Handle Supabase authentication
-  const handleSupabaseAuth = async (lineProfile: any) => {
+  const handleSupabaseAuth = async (lineProfile: LiffProfile) => {
     // Prevent multiple simultaneous processing
     if (isProcessing.current) {
       console.log("Authentication already in progress, skipping...")

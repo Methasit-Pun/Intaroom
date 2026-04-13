@@ -63,8 +63,8 @@ export default function RegisterPage() {
       } else {
         throw new Error("Registration failed. Please try again.")
       }
-    } catch (error: any) {
-      setError(error.message || "Failed to register")
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to register")
     } finally {
       setLoading(false)
     }

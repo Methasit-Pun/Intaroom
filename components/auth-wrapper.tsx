@@ -27,15 +27,17 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
                 console.log("🔒 AuthWrapper: Checking authentication state...")
                 console.log("🌍 Environment:", process.env.NODE_ENV)
                 
-                // Check if user is admin (highest priority)
-                if (typeof window !== "undefined") {
-                    const isAdmin = localStorage.getItem("isAdmin") === "true";
-                    if (isAdmin) {
+                // Check if user is admin (highest priority) via the HttpOnly cookie.
+                try {
+                    const adminRes = await fetch("/api/admin/verify");
+                    if (adminRes.ok) {
                         console.log("👑 AuthWrapper: Admin session found")
                         setIsAuthenticated(true);
                         setIsLoading(false);
                         return;
                     }
+                } catch {
+                    // No admin session — continue with regular auth checks
                 }
 
                 // Check Supabase session

@@ -146,9 +146,9 @@ export default function ReservationDetailsPage() {
 
       setReservation(groupedReservation)
       setIndividualReservations(reservationsData) // Store individual reservations for QR code generation
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error fetching reservation details:", error)
-      setError(error.message || "Failed to load reservation details")
+      setError(error instanceof Error ? error.message : "Failed to load reservation details")
     } finally {
       setLoading(false)
     }
