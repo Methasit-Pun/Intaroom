@@ -84,12 +84,12 @@ CREATE POLICY "reservations_update_policy" ON reservations
     )
   );
 
--- Enable RLS on admin_profiles table
-ALTER TABLE IF EXISTS public.admin_profiles ENABLE ROW LEVEL SECURITY;
+-- Enable RLS on admin table
+ALTER TABLE IF EXISTS public.admin ENABLE ROW LEVEL SECURITY;
 
--- Create policy to allow anyone to read admin_profiles (needed for login check)
-CREATE POLICY "Allow anyone to read admin_profiles" ON public.admin_profiles
-  FOR SELECT USING (true);
+-- Only the service role can read from admin (used by the login route with service key)
+CREATE POLICY "Allow service role to read admin" ON public.admin
+  FOR SELECT USING (auth.role() = 'service_role');
 
 -- Enable RLS on rooms table
 ALTER TABLE IF EXISTS public.rooms ENABLE ROW LEVEL SECURITY;
@@ -111,13 +111,22 @@ CREATE POLICY "rooms_admin_full_access" ON rooms
 -- ADMIN USER SETUP
 -- ============================================
 
--- Insert the default admin user into admin_profiles
-INSERT INTO public.admin_profiles (email, password, full_name)
-VALUES ('admin1', 'admin123', 'Admin User')
-ON CONFLICT (email)
+-- Insert the default admin user into admin table
+-- password_hash is SHA-256 of 'admin123'
+-- To generate a new hash: node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('YOUR_PASSWORD').digest('hex'))"
+INSERT INTO public.admin (username, password_hash, full_name, email, is_active)
+VALUES (
+  'admin1',
+  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+  'Admin User',
+  'admin@intaroom.local',
+  true
+)
+ON CONFLICT (username)
 DO UPDATE SET
-  password = 'admin123',
+  password_hash = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
   full_name = 'Admin User',
+  is_active = true,
   updated_at = NOW();
 
 -- Create admin user in auth.users table

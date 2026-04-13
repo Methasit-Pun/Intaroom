@@ -62,6 +62,9 @@ describe("POST /api/admin/login", () => {
   let mockCreateClient: MockedFunction<typeof CreateClientType>
 
   beforeEach(async () => {
+    // Reset module registry so the route's in-memory rate-limit Map starts
+    // fresh for every test (all requests share the same "unknown" IP).
+    vi.resetModules()
     const supabaseJs = await import("@supabase/supabase-js")
     mockCreateClient = supabaseJs.createClient as MockedFunction<typeof CreateClientType>
 

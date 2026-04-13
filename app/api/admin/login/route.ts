@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
-import bcrypt from "bcryptjs"
+import { createHash } from "crypto"
 import { NextResponse } from "next/server"
 
 // ---------------------------------------------------------------------------
@@ -73,16 +73,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
     }
 
-    // Use service role key so this route can read admin_profiles regardless of RLS
+    // Use service role key so this route can read admin table regardless of RLS
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     })
 
     // Look up the admin record by username
     const { data: admin, error } = await supabase
-      .from("admin_profiles")
+      .from("admin")
       .select("id, username, password_hash")
       .eq("username", username)
+      .eq("is_active", true)
       .single()
 
     if (error || !admin) {
@@ -91,11 +92,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid admin credentials" }, { status: 401 })
     }
 
-    // Compare password against bcrypt hash stored in admin_profiles.password_hash.
+    // Compare password against SHA-256 hash stored in admin.password_hash.
     // To generate a new hash run:
-    //   node -e "const b=require('bcryptjs'); b.hash('YOUR_PASSWORD', 12).then(console.log)"
-    // then store that string in admin_profiles.password_hash.
-    const passwordMatches = await bcrypt.compare(password, admin.password_hash)
+    //   node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('YOUR_PASSWORD').digest('hex'))"
+    // then store that string in admin.password_hash.
+    const inputHash = createHash("sha256").update(password).digest("hex")
+    const passwordMatches = inputHash === admin.password_hash
 
     if (!passwordMatches) {
       return NextResponse.json({ error: "Invalid admin credentials" }, { status: 401 })
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
     response.cookies.set("isAdmin", "true", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict", // prevent CSRF
+      sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
