@@ -67,6 +67,18 @@ const ChartContainer = React.forwardRef<
 })
 ChartContainer.displayName = "Chart"
 
+// Allowlist for CSS color values and custom-property names to prevent injection.
+const SAFE_CSS_VALUE = /^[a-zA-Z0-9#(),.\s%+-]+$/
+const SAFE_CSS_IDENT = /^[a-zA-Z0-9_-]+$/
+
+function sanitizeCssValue(value: string): string | null {
+  return SAFE_CSS_VALUE.test(value) ? value : null
+}
+
+function sanitizeCssIdent(ident: string): string | null {
+  return SAFE_CSS_IDENT.test(ident) ? ident : null
+}
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
     ([_, config]) => config.theme || config.color
@@ -76,24 +88,30 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  const safeId = sanitizeCssIdent(id)
+  if (!safeId) return null
+
   return (
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
+          .map(([theme, prefix]) => {
+            const declarations = colorConfig
+              .map(([key, itemConfig]) => {
+                const safeKey = sanitizeCssIdent(key)
+                const rawColor =
+                  itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+                  itemConfig.color
+                const safeColor = rawColor ? sanitizeCssValue(rawColor) : null
+                return safeKey && safeColor
+                  ? `  --color-${safeKey}: ${safeColor};`
+                  : null
+              })
+              .filter(Boolean)
+              .join("\n")
+
+            return `\n${prefix} [data-chart=${safeId}] {\n${declarations}\n}`
+          })
           .join("\n"),
       }}
     />

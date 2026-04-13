@@ -297,9 +297,9 @@ export default function ReservePage() {
       params.set("confirmationNumber", "INR-00000")
 
       router.push(`/summary?${params.toString()}`)
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error creating reservation:", error)
-      setError(error.message || "Failed to create reservation")
+      setError(error instanceof Error ? error.message : "Failed to create reservation")
       setIsBookingModalOpen(false)
     } finally {
       setLoading(false)

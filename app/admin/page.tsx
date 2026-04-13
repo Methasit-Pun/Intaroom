@@ -142,7 +142,11 @@ export default function AdminPage() {
 
       const enhancedReservations = reservationsData.map((reservation) => {
         const profile = profileMap.get(reservation.user_id)
-        const room = reservation.rooms as { name: string } | null
+        const roomData = reservation.rooms
+        const room: { name: string } | null =
+          roomData != null && typeof roomData === "object" && !Array.isArray(roomData)
+            ? (roomData as { name: string })
+            : null
         return {
           ...reservation,
           room_name: room?.name || `Room ${reservation.room_id}`,
@@ -153,9 +157,9 @@ export default function AdminPage() {
       })
 
       setReservations(enhancedReservations)
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error fetching reservations:", error)
-      setError(error.message || "Failed to load reservations")
+      setError(error instanceof Error ? error.message : "Failed to load reservations")
     } finally {
       setLoading(false)
     }
@@ -177,15 +181,13 @@ export default function AdminPage() {
     }
   }, [supabase])
 
-  // Check if user is authenticated as admin
+  // Check if user is authenticated as admin via the HttpOnly cookie (server-side)
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Check if admin is logged in via localStorage
-        const isAdmin = localStorage.getItem("isAdmin") === "true"
+        const res = await fetch("/api/admin/verify")
 
-        if (!isAdmin) {
-          // If not admin, redirect to login
+        if (!res.ok) {
           router.push("/login")
           return
         }
@@ -195,9 +197,9 @@ export default function AdminPage() {
         fetchUsers()
       } catch (error) {
         console.error("Auth check error:", error)
+        router.push("/login")
       }
     }
-     
 
     checkAuth()
   }, [router, fetchReservations, fetchUsers])
@@ -404,9 +406,9 @@ export default function AdminPage() {
 
       // Close the dialog
       setConfirmDialog({ open: false, ids: null, action: null })
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ ADMIN ERROR: Failed to update reservation:", error)
-      setError(error.message || "Failed to update reservation")
+      setError(error instanceof Error ? error.message : "Failed to update reservation")
     } finally {
       setActionLoading(false)
     }
@@ -451,9 +453,9 @@ export default function AdminPage() {
       // Close dialog
       setBanDialog({ open: false, userId: null, userName: null, type: null })
       setBanReason("")
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error banning user:", error)
-      setError(error.message || "Failed to ban user")
+      setError(error instanceof Error ? error.message : "Failed to ban user")
     } finally {
       setActionLoading(false)
     }

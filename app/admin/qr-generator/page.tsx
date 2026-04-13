@@ -38,9 +38,9 @@ export default function QRCodeGeneratorPage() {
         total: generationResult.updated + generationResult.errors
       })
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("QR code generation failed:", error)
-      setError(error.message || "Failed to generate QR codes")
+      setError(error instanceof Error ? error.message : "Failed to generate QR codes")
     } finally {
       setIsGenerating(false)
     }

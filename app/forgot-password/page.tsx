@@ -32,8 +32,8 @@ export default function ForgotPasswordPage() {
       if (error) throw error
 
       setSuccess(true)
-    } catch (error: any) {
-      setError(error.message || "Failed to send reset email")
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to send reset email")
     } finally {
       setLoading(false)
     }
