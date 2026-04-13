@@ -50,7 +50,9 @@ type AdminProfile = { id: number; username: string; password_hash: string }
 
 function makeSupabaseClient(adminData: AdminProfile | null, queryError: unknown = null) {
   const single = vi.fn().mockResolvedValue({ data: adminData, error: queryError })
-  const eq = vi.fn().mockReturnValue({ single })
+  // eq must be chainable: route calls .eq("username", …).eq("is_active", …).single()
+  const eq = vi.fn()
+  eq.mockReturnValue({ eq, single })
   const select = vi.fn().mockReturnValue({ eq })
   const from = vi.fn().mockReturnValue({ select })
   return { from }
