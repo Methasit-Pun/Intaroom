@@ -15,7 +15,7 @@ This project now uses 3 organized SQL files instead of multiple scattered files.
 - Profiles table with all columns (username, credits, line_user_id, etc.)
 - Rooms and room features tables
 - Reservations table with QR code support
-- Admin profiles table for direct admin auth
+- Admin table for direct admin auth (username + SHA-256 password_hash)
 - Core functions (handle_new_user, check_username_exists, etc.)
 - Triggers for automated user handling
 
@@ -97,7 +97,7 @@ SELECT COUNT(*) as verified_users FROM profiles WHERE email_verified = true;
 SELECT COUNT(*) as users_with_usernames FROM profiles WHERE username IS NOT NULL;
 
 -- Check admin setup
-SELECT * FROM admin_profiles;
+SELECT * FROM admin;
 SELECT * FROM profiles WHERE role = 'admin';
 
 -- Verify RLS policies
@@ -108,7 +108,7 @@ SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public';
 
 The following individual SQL files were merged into the 3 organized files:
 
-**Schema & Tables:** database.sql, create_profiles_table.sql, create_admin_profiles_table.sql, recreate_profiles_table.sql
+**Schema & Tables:** database.sql, create_profiles_table.sql, create_admin_table.sql, recreate_profiles_table.sql
 
 **Authentication:** create_admin_user.sql, create_test_user.sql, auto_confirm_emails.sql, fix_auth_policies.sql, fix_profiles_rls.sql
 

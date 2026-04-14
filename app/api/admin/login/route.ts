@@ -73,16 +73,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
     }
 
-    // Use service role key so this route can read admin_profiles regardless of RLS
+    // Use service role key so this route can read admin table regardless of RLS
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     })
 
     // Look up the admin record by username
     const { data: admin, error } = await supabase
-      .from("admin_profiles")
+      .from("admin")
       .select("id, username, password_hash")
       .eq("username", username)
+      .eq("is_active", true)
       .single()
 
     if (error || !admin) {

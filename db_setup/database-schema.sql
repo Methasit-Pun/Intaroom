@@ -85,15 +85,18 @@ CREATE TABLE IF NOT EXISTS reservations (
 );
 
 -- ============================================
--- ADMIN PROFILES TABLE (Direct Admin Auth)
+-- ADMIN TABLE (Direct Admin Auth)
 -- ============================================
 
--- Create admin_profiles table for direct admin authentication
-CREATE TABLE IF NOT EXISTS public.admin_profiles (
+-- Create admin table for direct admin authentication
+CREATE TABLE IF NOT EXISTS public.admin (
   id SERIAL PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
   full_name TEXT,
+  email TEXT UNIQUE,
+  is_active BOOLEAN DEFAULT true,
+  last_login_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

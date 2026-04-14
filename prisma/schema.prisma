@@ -1,0 +1,180 @@
+// ============================================================
+// Prisma Schema — Intaroom
+// ============================================================
+// Datasource uses two URLs:
+//   DATABASE_URL  — transaction pooler (port 6543, PgBouncer)
+//   DIRECT_URL    — direct connection  (port 5432, migrations only)
+//
+// Both URLs live in .env — copy .env.example to get started.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "auth"]
+}
+
+// ============================================================
+// AUTH SCHEMA
+// Mirrors Supabase's auth.users so we can reference it as a
+// Prisma relation. This model is read-only from our app —
+// Supabase owns the writes.
+// ============================================================
+
+model AuthUser {
+  id           String        @id @db.Uuid
+  email        String?
+  profiles     Profile[]
+  reservations Reservation[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+// ============================================================
+// PUBLIC SCHEMA
+// ============================================================
+
+// ------------------------------------------------------------
+// Profile
+// One profile per Supabase auth user.
+// ------------------------------------------------------------
+model Profile {
+  id            String    @id @db.Uuid
+  fullName      String?   @map("full_name")
+  email         String
+  role          Role      @default(user)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  username      String?   @unique
+  telephone     String?
+  lineUserId    String?   @unique @map("line_user_id")
+  avatarUrl     String?   @map("avatar_url")
+  credits       Int       @default(100)
+  isBanned      Boolean   @default(false) @map("is_banned")
+  banReason     String?   @map("ban_reason")
+  banUntil      DateTime? @map("ban_until") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  authUser AuthUser @relation(fields: [id], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+enum Role {
+  user
+  admin
+
+  @@schema("public")
+}
+
+// ------------------------------------------------------------
+// Room
+// ------------------------------------------------------------
+model Room {
+  id           Int                    @id @default(autoincrement())
+  name         String
+  capacity     Int
+  description  String?
+  imageUrl     String?                @map("image_url")
+  isActive     Boolean                @default(true) @map("is_active")
+  createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  features     RoomFeaturesJunction[]
+  reservations Reservation[]
+
+  @@map("rooms")
+  @@schema("public")
+}
+
+// ------------------------------------------------------------
+// RoomFeature
+// ------------------------------------------------------------
+model RoomFeature {
+  id        Int                    @id @default(autoincrement())
+  name      String
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz
+
+  rooms     RoomFeaturesJunction[]
+
+  @@map("room_features")
+  @@schema("public")
+}
+
+// ------------------------------------------------------------
+// RoomFeaturesJunction  (many-to-many Room <-> RoomFeature)
+// ------------------------------------------------------------
+model RoomFeaturesJunction {
+  room      Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId    Int         @map("room_id")
+  feature   RoomFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  featureId Int         @map("feature_id")
+
+  @@id([roomId, featureId])
+  @@map("room_features_junction")
+  @@schema("public")
+}
+
+// ------------------------------------------------------------
+// Reservation
+// ------------------------------------------------------------
+model Reservation {
+  id               Int               @id @default(autoincrement())
+  bookingName      String            @map("booking_name")
+  date             DateTime          @db.Date
+  startTime        DateTime          @map("start_time") @db.Time
+  endTime          DateTime          @map("end_time") @db.Time
+  status           ReservationStatus @default(Pending)
+  purpose          String?
+  attendees        Int?
+  contactEmail     String?           @map("contact_email")
+  contactPhone     String?           @map("contact_phone")
+  specialRequests  String?           @map("special_requests")
+  equipmentNeeded  String?           @map("equipment_needed")
+  qrCodeUrl        String?           @map("qr_code_url")
+  adminNotes       String?           @map("admin_notes")
+  rejectionReason  String?           @map("rejection_reason")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  room   Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId Int      @map("room_id")
+  user   AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String   @map("user_id") @db.Uuid
+
+  @@map("reservations")
+  @@schema("public")
+}
+
+enum ReservationStatus {
+  Pending
+  Approved
+  Rejected
+
+  @@schema("public")
+}
+
+// ------------------------------------------------------------
+// Admin
+// Standalone admin accounts used by the custom login route.
+// Passwords are stored as SHA-256 hashes — never plaintext.
+// ------------------------------------------------------------
+model Admin {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String?   @map("full_name")
+  email        String?   @unique
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("admin")
+  @@schema("public")
+}

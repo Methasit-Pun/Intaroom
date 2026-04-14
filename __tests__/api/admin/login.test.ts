@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { createHash } from "crypto"
+import bcrypt from "bcryptjs"
 import type { MockNextResponse } from "../../setup"
 import type { MockedFunction } from "vitest"
 import type { createClient as CreateClientType } from "@supabase/supabase-js"
@@ -24,7 +24,7 @@ import type { createClient as CreateClientType } from "@supabase/supabase-js"
 
 const VALID_USERNAME = "admin1"
 const VALID_PASSWORD = "admin123"
-const VALID_PASSWORD_HASH = createHash("sha256").update(VALID_PASSWORD).digest("hex")
+const VALID_PASSWORD_HASH = bcrypt.hashSync(VALID_PASSWORD, 10)
 
 // ─── Request helpers ──────────────────────────────────────────────────────────
 
@@ -50,7 +50,9 @@ type AdminProfile = { id: number; username: string; password_hash: string }
 
 function makeSupabaseClient(adminData: AdminProfile | null, queryError: unknown = null) {
   const single = vi.fn().mockResolvedValue({ data: adminData, error: queryError })
-  const eq = vi.fn().mockReturnValue({ single })
+  // eq must be chainable: route calls .eq("username", …).eq("is_active", …).single()
+  const eq = vi.fn()
+  eq.mockReturnValue({ eq, single })
   const select = vi.fn().mockReturnValue({ eq })
   const from = vi.fn().mockReturnValue({ select })
   return { from }
@@ -62,6 +64,9 @@ describe("POST /api/admin/login", () => {
   let mockCreateClient: MockedFunction<typeof CreateClientType>
 
   beforeEach(async () => {
+    // Reset module registry so the route's in-memory rate-limit Map starts
+    // fresh for every test (all requests share the same "unknown" IP).
+    vi.resetModules()
     const supabaseJs = await import("@supabase/supabase-js")
     mockCreateClient = supabaseJs.createClient as MockedFunction<typeof CreateClientType>
 
@@ -107,12 +112,12 @@ describe("POST /api/admin/login", () => {
     expect(cookie?.httpOnly).toBe(true)
   })
 
-  it("sets cookie with sameSite: 'lax'", async () => {
+  it("sets cookie with sameSite: 'strict'", async () => {
     const { POST } = await import("@/app/api/admin/login/route")
     const res = (await POST(makeRequest({ username: VALID_USERNAME, password: VALID_PASSWORD }))) as unknown as MockNextResponse
 
     const cookie = res.cookies.get("isAdmin")
-    expect(cookie?.sameSite).toBe("lax")
+    expect(cookie?.sameSite).toBe("strict")
   })
 
   it("sets cookie with path: '/'", async () => {
