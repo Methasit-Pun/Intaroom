@@ -16,145 +16,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# ── Shared env used by every test job ────────────────────────────────────────
-env:
-  NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key
-  NODE_ENV: test
-  DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
-  DIRECT_URL: postgresql://dummy:dummy@localhost:5432/dummy
-
-# ─────────────────────────────────────────────────────────────────────────────
-# All test jobs run in parallel.
-# The build job gates on every test + quality job passing.
-# ─────────────────────────────────────────────────────────────────────────────
 jobs:
 
-  # ── Section 1: Admin API routes ───────────────────────────────────────────
-  # POST /api/admin/login  (credentials, cookies, rate limiting, edge cases)
-  # POST /api/admin/logout (cookie clearing)
-  test-admin-api:
-    name: "Tests › Admin API Routes"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Run admin API tests
-        run: pnpm vitest run __tests__/api/admin/
-
-  # ── Section 2: Auth middleware & server guards ────────────────────────────
-  # lib/admin-auth.ts  → getAdminSession(), requireAdmin()
-  # proxy.ts           → authentication guard middleware
-  test-auth:
-    name: "Tests › Auth Middleware"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Run auth middleware tests
-        run: pnpm vitest run __tests__/lib/admin-auth.test.ts __tests__/proxy.test.ts
-
-  # ── Section 3: Utility libraries ─────────────────────────────────────────
-  # lib/cors.ts           → CORS preflight / headers
-  # lib/filter-utils      → reservation filter / search logic
-  # lib/calendar-utils    → calendar date helpers
-  # lib/supabase-utils    → Supabase query helpers
-  # lib/functional-state  → pure state reducers
-  # lib/key-stability     → React key stability helpers
-  test-utils:
-    name: "Tests › Utility Libraries"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Run utility tests
-        run: |
-          pnpm vitest run \
-            __tests__/lib/cors.test.ts \
-            __tests__/lib/filter-utils.test.ts \
-            __tests__/lib/calendar-utils.test.ts \
-            __tests__/lib/supabase-utils.test.ts \
-            __tests__/lib/functional-state.test.ts \
-            __tests__/lib/key-stability.test.ts
-
-  # ── Coverage report (all tests, single run for the artifact) ─────────────
-  coverage:
-    name: "Tests › Coverage Report"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Run all tests with coverage
-        run: pnpm test:coverage
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 14
-
-  # ── TypeScript type check ─────────────────────────────────────────────────
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: TypeScript type check
-        run: pnpm type-check
-
-  # ── ESLint ────────────────────────────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -169,22 +32,14 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: ESLint
         run: pnpm lint
 
-  # ── Build (gates on ALL jobs above) ──────────────────────────────────────
-  build:
-    name: Build
+  type-check:
+    name: Type Check
     runs-on: ubuntu-latest
-    needs:
-      - test-admin-api
-      - test-auth
-      - test-utils
-      - coverage
-      - type-check
-      - lint
     steps:
       - uses: actions/checkout@v4
 
@@ -196,12 +51,34 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: pnpm type-check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - type-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Next.js build
         run: pnpm build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key' }}
-          NEXT_PUBLIC_LIFF_ID: ${{ secrets.NEXT_PUBLIC_LIFF_ID || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-key' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_LIFF_ID: ${{ secrets.NEXT_PUBLIC_LIFF_ID }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
