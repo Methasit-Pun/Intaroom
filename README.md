@@ -2,7 +2,7 @@
 
 A full-stack room booking platform built for the Intania (Faculty of Engineering, Chulalongkorn University) community. Users log in via LINE or email/password, browse available rooms, and submit reservation requests. Admins review and approve bookings through a separate dashboard.
 
-**Live:** https://intaroom.vercel.app  
+**Live:** https://intaroomv31.vercel.app  
 **Stack:** Next.js 15 · TypeScript · Supabase · LINE LIFF · Tailwind CSS · Vercel
 
 ---
@@ -312,8 +312,8 @@ The app deploys to **Vercel** (Singapore region, `sin1`).
 1. Push to `main` → Vercel auto-deploys
 2. Set all environment variables in Vercel → Settings → Environment Variables
 3. In Supabase → Authentication → URL Configuration:
-   - **Site URL:** `https://intaroom.vercel.app`
-   - **Redirect URLs:** `https://intaroom.vercel.app/auth/callback`
+   - **Site URL:** `https://intaroomv31.vercel.app`
+   - **Redirect URLs:** `https://intaroomv31.vercel.app/auth/callback`
 
 ### Security headers
 
