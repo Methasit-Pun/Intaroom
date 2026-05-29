@@ -12,10 +12,6 @@
     "start": "next start",
     "generate-qr": "node scripts/generate-qr-codes.js",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:temp": "NODE_PATH=/tmp/vtest-runner/node_modules node /tmp/vtest-runner/node_modules/vitest/vitest.mjs run",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -54,22 +50,17 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.5.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
     "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@vitest/coverage-v8": "^4.1.0",
     "autoprefixer": "^10.0.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.1",
     "postcss": "^8.5",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "typescript": "^5.9.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

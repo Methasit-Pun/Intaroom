@@ -426,7 +426,7 @@ export default function AdminCalendarPage() {
                     >
                       <ChevronLeft className="h-5 w-5 text-gray-700" />
                     </button>
-                    <h3 className="font-medium text-gray-800">
+                    <h3 className="font-medium text-gray-800" suppressHydrationWarning>
                       {selectedDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
                     </h3>
                     <button
