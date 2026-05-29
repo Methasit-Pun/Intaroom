@@ -288,6 +288,7 @@ export default function LoginPage() {
             }`}
             onClick={() => setUserType("user")}
             type="button"
+            suppressHydrationWarning
           >
             User
           </button>
@@ -297,6 +298,7 @@ export default function LoginPage() {
             }`}
             onClick={() => setUserType("admin")}
             type="button"
+            suppressHydrationWarning
           >
             Admin
           </button>
@@ -313,6 +315,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
                 disabled={loading}
+                suppressHydrationWarning
               />
             </div>
 
@@ -325,6 +328,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
                 required
                 disabled={loading}
+                suppressHydrationWarning
               />
             </div>
 
@@ -336,6 +340,7 @@ export default function LoginPage() {
                   onCheckedChange={(checked) => setRememberMe(checked === true)}
                   className="border-white/50 data-[state=checked]:bg-white data-[state=checked]:text-[#5A0D16]"
                   disabled={loading}
+                  suppressHydrationWarning
                 />
                 <Label htmlFor="remember" className="text-sm text-white cursor-pointer">
                   Remember Me
@@ -353,6 +358,7 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className="w-full py-3 rounded-full bg-white hover:bg-gray-100 text-[#000000] font-medium transition-colors font-markazi text-[20px] disabled:opacity-50 disabled:cursor-not-allowed"
+              suppressHydrationWarning
             >
               {loading ? (
                 <>

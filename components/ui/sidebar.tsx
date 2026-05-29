@@ -650,9 +650,11 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  // Random width between 50 to 90%.
-  // eslint-disable-next-line react-hooks/purity
-  const width = React.useMemo(() => `${Math.floor(Math.random() * 40) + 50}%`, [])
+  // Random width between 50 to 90% — initialized after mount to avoid SSR hydration mismatch.
+  const [width, setWidth] = React.useState("60%")
+  React.useEffect(() => {
+    setWidth(`${Math.floor(Math.random() * 40) + 50}%`)
+  }, [])
 
   return (
     <div
