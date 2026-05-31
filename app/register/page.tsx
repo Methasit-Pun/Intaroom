@@ -8,6 +8,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 
+const supabase = createClientComponentClient({ supabaseUrl, supabaseKey: supabaseAnonKey })
+
 export default function RegisterPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
@@ -18,17 +20,10 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Initialize Supabase client with explicit URL and key
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate passwords match
     if (password !== confirmPassword) {
       setError("Passwords do not match")
       return
@@ -37,16 +32,14 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
-      // Sign up with email and password
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `https://intaroomv2.vercel.app/auth/callback?type=email_confirmation`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?type=email_confirmation`,
           data: {
             full_name: fullName,
             username: username,
-            // Include any additional fields you want to capture
           },
         },
       })
@@ -54,11 +47,6 @@ export default function RegisterPage() {
       if (error) throw error
 
       if (data.user) {
-        // Wait a bit for the database trigger to create the profile
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        console.log("Registration successful, redirecting to success page")
-        // Redirect to success page immediately
         router.push("/register-success")
       } else {
         throw new Error("Registration failed. Please try again.")
@@ -81,16 +69,14 @@ export default function RegisterPage() {
 
         <form onSubmit={handleRegister}>
           <div className="space-y-4">
-            <div>
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+            />
 
             <div>
               <input
@@ -104,43 +90,37 @@ export default function RegisterPage() {
               <p className="text-xs text-white/70 mt-1 ml-2">Choose a unique username for login</p>
             </div>
 
-            <div>
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-              />
-            </div>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+            />
 
-            <div>
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-              />
-            </div>
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+            />
 
-            <div>
-              <input
-                type="password"
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-              />
-            </div>
+            <input
+              type="password"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+            />
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors"
+              className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors disabled:opacity-50"
             >
               {loading ? "Registering..." : "Register"}
             </button>
@@ -157,4 +137,3 @@ export default function RegisterPage() {
     </div>
   )
 }
-
