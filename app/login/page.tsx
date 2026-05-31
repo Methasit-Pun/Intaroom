@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 import { CheckCircle, Loader2, AlertCircle } from "lucide-react"
-import LineLoginButton from "@/components/line-login-button"
 import { useLiff } from "@/components/liff-provider"
+
+const supabase = createClientComponentClient({ supabaseUrl, supabaseKey: supabaseAnonKey })
 
 export default function LoginPage() {
   const router = useRouter()
@@ -25,13 +26,6 @@ export default function LoginPage() {
   const [verificationSuccess, setVerificationSuccess] = useState(false)
   const { isLoggedIn, profile } = useLiff()
 
-  // Initialize Supabase client with explicit URL and key
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
-
-  // Check for verification success parameter
   useEffect(() => {
     const verified = searchParams.get("verified")
     if (verified === "true") {
@@ -41,27 +35,21 @@ export default function LoginPage() {
 
   // Check auth state only once on mount
   useEffect(() => {
-    let isMounted = true;
-    
+    let isMounted = true
+
     const checkAuthState = async () => {
       try {
-        console.log("🔍 Checking authentication state...")
-
-        // Check admin login first (highest priority) via the HttpOnly cookie.
         try {
           const adminRes = await fetch("/api/admin/verify")
           if (adminRes.ok) {
-            console.log("👑 Admin session found, redirecting to admin panel")
             if (isMounted) router.push("/admin")
             return
           }
         } catch {
-          // No admin session — continue with regular auth checks
+          // No admin session — continue
         }
 
-        // Check LINE login
         if (isLoggedIn && profile) {
-          console.log("📱 LINE user logged in, checking profile completion")
           try {
             const { data: userProfile } = await supabase
               .from("profiles")
@@ -69,50 +57,37 @@ export default function LoginPage() {
               .eq("line_user_id", profile.userId)
               .single()
 
-            if (userProfile && userProfile.full_name && userProfile.telephone) {
-              console.log("✅ LINE user profile complete, redirecting to main page")
+            if (userProfile?.full_name && userProfile?.telephone) {
               if (isMounted) router.push("/")
             } else {
-              console.log("⚠️ LINE user profile incomplete, redirecting to profile setup")
               if (isMounted) router.push("/profile?setup=true")
             }
-          } catch (error) {
-            console.error("❌ Error checking LINE user profile:", error)
+          } catch {
             if (isMounted) router.push("/profile?setup=true")
           }
           return
         }
 
-        // Check Supabase session (lowest priority)
         const { data } = await supabase.auth.getSession()
         if (data.session) {
-          // If user logged in without "Remember Me", sessionStorage flag is gone after
-          // the browser closes (sessionStorage doesn't survive restarts). Sign them out.
-          const remembered = sessionStorage.getItem("rememberMe")
+          const remembered = localStorage.getItem("rememberMe")
           const sessionActive = sessionStorage.getItem("sessionActive")
           if (!remembered && !sessionActive) {
-            console.log("🚪 Session found but not remembered — signing out")
             await supabase.auth.signOut()
             return
           }
           sessionStorage.setItem("sessionActive", "true")
-          console.log("🔐 Supabase session found, redirecting to main page")
-          console.log("👤 Session user:", data.session.user.email)
           if (isMounted) router.push("/")
-          return
         }
-
-        console.log("🚫 No active sessions found")
-      } catch (error) {
-        console.error("❌ Auth state check error:", error)
+      } catch {
+        // Silently ignore auth check errors on mount
       }
     }
 
-    // Debounce the auth check to prevent multiple rapid calls
     const timeoutId = setTimeout(checkAuthState, 100)
-    
+
     return () => {
-      isMounted = false;
+      isMounted = false
       clearTimeout(timeoutId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,138 +98,91 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    console.log("🔐 Login attempt started:", { username, userType, timestamp: new Date().toISOString() })
-
-    // Add timeout to prevent infinite loading states
     const loginTimeout = setTimeout(() => {
       setLoading(false)
       setError("Login is taking too long. Please try again.")
-      console.error("⏰ Login timeout reached")
-    }, 30000) // 30 seconds timeout
+    }, 30000)
 
     try {
       if (userType === "admin") {
-        // Admin login - validated server-side via API route
         const res = await fetch("/api/admin/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
         })
 
-        if (!res.ok) {
-          throw new Error("Invalid admin credentials")
-        }
+        if (!res.ok) throw new Error("Invalid admin credentials")
 
-        console.log("✅ Admin login successful, redirecting...")
+        clearTimeout(loginTimeout)
         router.push("/admin")
         return
-      } else {
-        // Regular user login
-        let email = username
-        let userProfile = null
+      }
 
-        // If username doesn't contain @ symbol, look up the email by username
-        if (!username.includes("@")) {
-          console.log("🔍 Looking up email for username:", username)
+      let email = username
+      let userProfile = null
 
-          try {
-            const { data: profileData, error: profileError } = await supabase
-              .from("profiles")
-              .select("email, id, full_name, username")
-              .eq("username", username)
-              .single()
+      if (!username.includes("@")) {
+        try {
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("email, id, full_name, username")
+            .eq("username", username)
+            .single()
 
-            if (profileError) {
-              console.error("❌ Profile lookup error:", profileError)
-              if (profileError.code === "PGRST116") {
-                throw new Error("Username not found. Please check your username or register a new account.")
-              } else {
-                throw new Error(`Profile lookup failed: ${profileError.message}`)
-              }
-            }
-
-            if (!profileData) {
+          if (profileError) {
+            if (profileError.code === "PGRST116") {
               throw new Error("Username not found. Please check your username or register a new account.")
             }
-
-            email = profileData.email
-            userProfile = profileData
-            console.log("✅ Found email for username:", email)
-          } catch (lookupError: any) {
-            console.error("❌ Username lookup failed:", lookupError)
-            throw lookupError
+            throw new Error(`Profile lookup failed: ${profileError.message}`)
           }
-        }
 
-        // Now login with the email
-        console.log("🔑 Attempting Supabase authentication with email:", email)
-
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
-        })
-
-        if (error) {
-          console.error("❌ Supabase authentication error:", error)
-
-          if (error.message.includes("Invalid login credentials")) {
-            throw new Error("Invalid username or password. Please check your credentials and try again.")
-          } else if (error.message.includes("Email not confirmed")) {
-            throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
-          } else {
-            throw new Error(`Authentication failed: ${error.message}`)
+          if (!profileData) {
+            throw new Error("Username not found. Please check your username or register a new account.")
           }
+
+          email = profileData.email
+          userProfile = profileData
+        } catch (lookupError: unknown) {
+          throw lookupError
         }
+      }
 
-        if (!data.user) {
-          throw new Error("Login failed. No user data received from authentication service.")
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-        console.log("✅ Authentication successful for user:", data.user.id)
-
-        // Check if email is verified
-        if (!data.user.email_confirmed_at) {
-          console.warn("⚠️ User email not confirmed, signing out")
-          await supabase.auth.signOut()
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+          throw new Error("Invalid username or password. Please check your credentials and try again.")
+        } else if (error.message.includes("Email not confirmed")) {
           throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
         }
-
-        // Store user info in localStorage for quick access
-        if (userProfile) {
-          const userData = {
-            id: data.user.id,
-            email: data.user.email,
-            username: userProfile.username,
-            full_name: userProfile.full_name,
-          }
-          localStorage.setItem("currentUser", JSON.stringify(userData))
-          console.log("💾 User data stored in localStorage:", userData)
-        }
-
-        console.log("🎉 Login successful, redirecting to main page")
-
-        // Persist "remember me" choice so the auth check knows what to do
-        if (rememberMe) {
-          sessionStorage.setItem("rememberMe", "true")
-        } else {
-          sessionStorage.removeItem("rememberMe")
-        }
-        sessionStorage.setItem("sessionActive", "true")
-
-        // Clear the timeout since login was successful
-        clearTimeout(loginTimeout)
-
-        // Use router for navigation instead of window.location
-        router.push("/")
-        return
+        throw new Error(`Authentication failed: ${error.message}`)
       }
+
+      if (!data.user) {
+        throw new Error("Login failed. No user data received from authentication service.")
+      }
+
+      if (!data.user.email_confirmed_at) {
+        await supabase.auth.signOut()
+        throw new Error("Please verify your email before logging in. Check your inbox for the verification link.")
+      }
+
+      void userProfile // profile data is available from the session if needed
+
+      if (rememberMe) {
+        localStorage.setItem("rememberMe", "true")
+      } else {
+        localStorage.removeItem("rememberMe")
+      }
+      sessionStorage.setItem("sessionActive", "true")
+
+      clearTimeout(loginTimeout)
+      router.push("/")
     } catch (error) {
-      console.error("❌ Overall login error:", error)
-      clearTimeout(loginTimeout) // Clear timeout on error too
+      clearTimeout(loginTimeout)
       setError(error instanceof Error ? error.message : "Failed to login. Please try again.")
     } finally {
       setLoading(false)
-      console.log("🏁 Login attempt completed")
     }
   }
 
@@ -306,31 +234,27 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div className="space-y-4">
-            <div>
-              <input
-                type="text"
-                placeholder={userType === "admin" ? "Admin Username" : "Username or Email"}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-                disabled={loading}
-                suppressHydrationWarning
-              />
-            </div>
+            <input
+              type="text"
+              placeholder={userType === "admin" ? "Admin Username" : "Username or Email"}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+              disabled={loading}
+              suppressHydrationWarning
+            />
 
-            <div>
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                required
-                disabled={loading}
-                suppressHydrationWarning
-              />
-            </div>
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+              required
+              disabled={loading}
+              suppressHydrationWarning
+            />
 
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
@@ -380,7 +304,6 @@ export default function LoginPage() {
             </Link>
           </div>
         )}
-
       </div>
     </div>
   )

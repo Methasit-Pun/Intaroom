@@ -6,38 +6,31 @@ import type { NextRequest } from "next/server"
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get("code")
+  const type = requestUrl.searchParams.get("type")
+
+  // For password recovery, pass the code to the client so it can exchange it
+  // directly — this triggers the PASSWORD_RECOVERY auth event client-side,
+  // which is required to gate the reset form properly.
+  if (type === "recovery" && code) {
+    return NextResponse.redirect(`${requestUrl.origin}/reset-password?code=${code}`)
+  }
 
   if (code) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
-    
+
     try {
-      // Exchange the code for a session
       await supabase.auth.exchangeCodeForSession(code)
-      
-      // Check if this is an email verification
-      const type = requestUrl.searchParams.get("type")
-      
+
       if (type === "email_confirmation") {
-        // Email verification - redirect to login with success message
-        return NextResponse.redirect(`https://intaroomv2.vercel.app/login?verified=true`)
+        return NextResponse.redirect(`${requestUrl.origin}/login?verified=true`)
       }
-      
-      if (type === "recovery") {
-        // Password recovery - redirect to reset password page
-        return NextResponse.redirect(`https://intaroomv2.vercel.app/reset-password`)
-      }
-      
-      // Regular auth callback - redirect to main app
-      return NextResponse.redirect(`https://intaroomv2.vercel.app/`)
-      
-    } catch (error) {
-      console.error("Auth callback error:", error)
-      // If there's an error, redirect to login with error parameter
-      return NextResponse.redirect(`https://intaroomv2.vercel.app/login?error=auth_callback_failed`)
+
+      return NextResponse.redirect(`${requestUrl.origin}/`)
+    } catch {
+      return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_callback_failed`)
     }
   }
 
-  // No code provided - redirect to login
-  return NextResponse.redirect(`https://intaroomv2.vercel.app/login?error=missing_auth_code`)
+  return NextResponse.redirect(`${requestUrl.origin}/login?error=missing_auth_code`)
 }

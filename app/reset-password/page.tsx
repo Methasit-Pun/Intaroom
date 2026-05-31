@@ -2,42 +2,71 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { supabaseUrl, supabaseAnonKey } from "@/app/env"
 
+const supabase = createClientComponentClient({ supabaseUrl, supabaseKey: supabaseAnonKey })
+
 export default function ResetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [sessionReady, setSessionReady] = useState(false)
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Initialize Supabase client with explicit URL and key
-  const supabase = createClientComponentClient({
-    supabaseUrl,
-    supabaseKey: supabaseAnonKey,
-  })
-
-  // Check if user has a valid recovery session
   useEffect(() => {
-    const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession()
-      if (error || !data.session) {
+    const code = searchParams.get("code")
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setSessionReady(true)
+        // Remove the code from the URL so it can't be replayed
+        router.replace("/reset-password")
+      } else if (!session) {
         router.push("/login")
       }
+    })
+
+    if (code) {
+      // Exchange client-side — this triggers the PASSWORD_RECOVERY event above
+      supabase.auth.exchangeCodeForSession(code).catch(() => router.push("/login"))
+    } else {
+      // No code in URL: if there's no existing session either, redirect to login.
+      // A logged-in user who navigates here directly will not get a PASSWORD_RECOVERY
+      // event, so sessionReady stays false and they are redirected by the timeout below.
+      supabase.auth.getSession().then(({ data }) => {
+        if (!data.session) router.push("/login")
+      })
     }
 
-    checkSession()
-  }, [router, supabase.auth])
+    // Fallback: if PASSWORD_RECOVERY never fires within 8 seconds, redirect to login
+    const fallback = setTimeout(() => {
+      if (!sessionReady) router.push("/login")
+    }, 8000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(fallback)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current)
+    }
+  }, [])
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate passwords match
     if (password !== confirmPassword) {
       setError("Passwords do not match")
       return
@@ -46,23 +75,23 @@ export default function ResetPasswordPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password,
-      })
-
+      const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
-
       setSuccess(true)
-
-      // Redirect to login after 3 seconds
-      setTimeout(() => {
-        router.push("/login")
-      }, 3000)
+      redirectTimer.current = setTimeout(() => router.push("/login"), 3000)
     } catch (error) {
       setError(error instanceof Error ? error.message : "Failed to reset password")
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!sessionReady && !success) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#5A0D16]">
+        <div className="text-white/70 text-sm">Verifying reset link...</div>
+      </div>
+    )
   }
 
   return (
@@ -75,40 +104,32 @@ export default function ResetPasswordPage() {
         )}
 
         {success ? (
-          <div>
-            <div className="bg-green-500/20 border border-green-500 text-white p-4 rounded-lg mb-6">
-              <p className="text-center">Password has been reset successfully. Redirecting to login...</p>
-            </div>
+          <div className="bg-green-500/20 border border-green-500 text-white p-4 rounded-lg">
+            <p className="text-center">Password has been reset successfully. Redirecting to login...</p>
           </div>
         ) : (
           <form onSubmit={handleResetPassword}>
             <div className="space-y-4">
-              <div>
-                <input
-                  type="password"
-                  placeholder="New Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                  required
-                />
-              </div>
-
-              <div>
-                <input
-                  type="password"
-                  placeholder="Confirm New Password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
-                  required
-                />
-              </div>
-
+              <input
+                type="password"
+                placeholder="New Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                required
+              />
+              <input
+                type="password"
+                placeholder="Confirm New Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-full bg-transparent border border-white/30 text-white placeholder:text-white/70 focus:outline-none focus:border-white/50"
+                required
+              />
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors"
+                className="w-full py-3 rounded-full bg-[#E8E1D9] hover:bg-[#D8D1C9] text-[#5A0D16] font-medium transition-colors disabled:opacity-50"
               >
                 {loading ? "Resetting..." : "Reset Password"}
               </button>
